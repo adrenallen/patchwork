@@ -14,7 +14,16 @@
     editControls: document.querySelector("#editControls"),
     maskModeButton: document.querySelector("#maskModeButton"),
     textModeButton: document.querySelector("#textModeButton"),
+    circleModeButton: document.querySelector("#circleModeButton"),
+    arrowModeButton: document.querySelector("#arrowModeButton"),
+    patchFillOptions: document.querySelector("#patchFillOptions"),
     textOptions: document.querySelector("#textOptions"),
+    annotationOptions: document.querySelector("#annotationOptions"),
+    annotationColor: document.querySelector("#annotationColor"),
+    annotationColorValue: document.querySelector("#annotationColorValue"),
+    annotationSize: document.querySelector("#annotationSize"),
+    annotationSizeValue: document.querySelector("#annotationSizeValue"),
+    annotationNote: document.querySelector("#annotationNote"),
     backgroundColor: document.querySelector("#backgroundColor"),
     backgroundColorValue: document.querySelector("#backgroundColorValue"),
     patternButtons: [...document.querySelectorAll(".pattern-button")],
@@ -29,6 +38,7 @@
     applyButtonLabel: document.querySelector("#applyButtonLabel"),
     undoButton: document.querySelector("#undoButton"),
     redoButton: document.querySelector("#redoButton"),
+    cropButton: document.querySelector("#cropButton"),
     clearSelectionButton: document.querySelector("#clearSelectionButton"),
     copyButton: document.querySelector("#copyButton"),
     downloadButton: document.querySelector("#downloadButton"),
@@ -54,6 +64,11 @@
     framePaddingValue: document.querySelector("#framePaddingValue"),
     cornerRadius: document.querySelector("#cornerRadius"),
     cornerRadiusValue: document.querySelector("#cornerRadiusValue"),
+    zoomOutButton: document.querySelector("#zoomOutButton"),
+    zoomInButton: document.querySelector("#zoomInButton"),
+    zoomValue: document.querySelector("#zoomValue"),
+    fitViewButton: document.querySelector("#fitViewButton"),
+    panModeButton: document.querySelector("#panModeButton"),
     toast: document.querySelector("#toast"),
   };
 
@@ -63,6 +78,8 @@
     textStyle: "patchwork.textStyle",
     fontSize: "patchwork.fontSize",
     autoTextSize: "patchwork.autoTextSize",
+    annotationColor: "patchwork.annotationColor",
+    annotationSize: "patchwork.annotationSize",
     pattern: "patchwork.pattern",
     recentPatches: "patchwork.recentPatches",
     frameEnabled: "patchwork.frameEnabled",
@@ -89,6 +106,8 @@
   const IMAGE_STORE_NAME = "images";
   const MAX_SAVED_IMAGES = 7;
   const MAX_RECENT_PATCHES = 10;
+  const MIN_VIEW_ZOOM = 0.5;
+  const MAX_VIEW_ZOOM = 4;
 
   let imageLoaded = false;
   let imageName = "image";
@@ -102,7 +121,16 @@
   let gradientName = "dusk";
   let selection = null;
   let dragStart = null;
+  let arrowStart = null;
+  let arrowEnd = null;
   let isSelecting = false;
+  let viewZoom = 1;
+  let viewPanX = 0;
+  let viewPanY = 0;
+  let panModeEnabled = false;
+  let isPanning = false;
+  let panPointerStart = null;
+  let panOrigin = null;
   let history = [];
   let future = [];
   let isRestoring = false;
@@ -346,6 +374,8 @@
     elements.textColor.value = readPreference(STORAGE_KEYS.textColor, "#ffffff");
     elements.fontSize.value = readPreference(STORAGE_KEYS.fontSize, "28");
     elements.autoTextSize.checked = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
+    elements.annotationColor.value = readPreference(STORAGE_KEYS.annotationColor, "#ef4444");
+    elements.annotationSize.value = String(clampNumber(readPreference(STORAGE_KEYS.annotationSize, "6"), 2, 28, 6));
     const savedTextStyle = readPreference(STORAGE_KEYS.textStyle, "bold");
     setTextStyle(["normal", "bold", "italic"].includes(savedTextStyle) ? savedTextStyle : "bold", false);
     const savedPattern = readPreference(STORAGE_KEYS.pattern, "solid");
@@ -516,6 +546,8 @@
   function updatePreferenceLabels() {
     elements.backgroundColorValue.value = elements.backgroundColor.value.toUpperCase();
     elements.textColorValue.value = elements.textColor.value.toUpperCase();
+    elements.annotationColorValue.value = elements.annotationColor.value.toUpperCase();
+    elements.annotationSizeValue.value = `${elements.annotationSize.value} px`;
     updateFontSizeUI();
     const lineColor = getPatternLineColor(elements.backgroundColor.value, 0.32);
     elements.patternButtons.forEach((button) => {
@@ -600,7 +632,7 @@
       const saved = JSON.parse(readPreference(STORAGE_KEYS.recentPatches, "[]"));
       const normalizedPatches = Array.isArray(saved)
         ? saved
-            .filter((preset) => preset && ["mask", "text"].includes(preset.mode))
+            .filter((preset) => preset && ["mask", "text", "circle", "arrow"].includes(preset.mode))
             .map((preset) => ({
               mode: preset.mode,
               pattern: ["solid", "diagonal", "hatch"].includes(preset.pattern) ? preset.pattern : "solid",
@@ -610,6 +642,8 @@
               fontSize: Number(preset.fontSize) || 28,
               autoTextSize: preset.autoTextSize === true,
               textStyle: ["normal", "bold", "italic"].includes(preset.textStyle) ? preset.textStyle : "bold",
+              annotationColor: preset.annotationColor || "#ef4444",
+              annotationSize: clampNumber(preset.annotationSize, 2, 28, 6),
             }))
         : [];
       const seen = new Set();
@@ -638,12 +672,17 @@
       textStyle,
       fontSize: Number(elements.fontSize.value),
       autoTextSize: elements.autoTextSize.checked,
+      annotationColor: elements.annotationColor.value,
+      annotationSize: Number(elements.annotationSize.value),
     };
   }
 
   function presetKey(preset) {
     if (preset.mode === "mask") {
       return JSON.stringify([preset.mode, preset.pattern, preset.backgroundColor]);
+    }
+    if (["circle", "arrow"].includes(preset.mode)) {
+      return JSON.stringify([preset.mode, preset.annotationColor, preset.annotationSize]);
     }
     return JSON.stringify([
       preset.mode,
@@ -678,10 +717,16 @@
     elements.clearRecentButton.hidden = recentPatches.length === 0;
 
     recentPatches.forEach((preset, index) => {
+      const isAnnotation = ["circle", "arrow"].includes(preset.mode);
+      const presetName = preset.mode === "text"
+        ? preset.text || "Text patch"
+        : isAnnotation
+          ? capitalize(preset.mode)
+          : `${capitalize(preset.pattern || "solid")} mask`;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "recent-preset";
-      button.setAttribute("aria-label", `Reuse recent patch ${index + 1}: ${preset.text || `${preset.pattern} mask`}`);
+      button.setAttribute("aria-label", `Reuse recent tool ${index + 1}: ${presetName}`);
 
       const swatch = document.createElement("span");
       swatch.className = "recent-swatch";
@@ -689,21 +734,26 @@
       swatch.style.setProperty("--sample-color", preset.backgroundColor || "#111827");
       swatch.style.setProperty("--sample-line", getPatternLineColor(preset.backgroundColor || "#111827", 0.32));
       swatch.style.setProperty("--sample-text", preset.textColor || "#ffffff");
-      swatch.textContent = preset.mode === "text" ? "Aa" : "";
+      swatch.textContent = preset.mode === "text" ? "Aa" : isAnnotation ? (preset.mode === "circle" ? "○" : "↗") : "";
       if (preset.mode === "text") {
         swatch.style.fontStyle = preset.textStyle === "italic" ? "italic" : "normal";
         swatch.style.fontWeight = preset.textStyle === "bold" ? "700" : "400";
+      } else if (isAnnotation) {
+        swatch.classList.add("is-annotation");
+        swatch.style.setProperty("--annotation-color", preset.annotationColor || "#ef4444");
       }
       swatch.setAttribute("aria-hidden", "true");
 
       const copy = document.createElement("span");
       copy.className = "recent-copy";
       const title = document.createElement("strong");
-      title.textContent = preset.mode === "text" ? preset.text || "Text patch" : `${capitalize(preset.pattern || "solid")} mask`;
+      title.textContent = presetName;
       const detail = document.createElement("small");
-      detail.textContent = preset.mode === "text"
-        ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
-        : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
+      detail.textContent = isAnnotation
+        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px marker`
+        : preset.mode === "text"
+          ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
+          : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
       copy.append(title, detail);
 
       const arrow = document.createElement("span");
@@ -724,16 +774,20 @@
     elements.fontSize.value = String(preset.fontSize || 28);
     elements.autoTextSize.checked = preset.autoTextSize === true;
     elements.replacementText.value = preset.text || "";
+    elements.annotationColor.value = preset.annotationColor || "#ef4444";
+    elements.annotationSize.value = String(preset.annotationSize || 6);
     savePreference(STORAGE_KEYS.backgroundColor, elements.backgroundColor.value);
     savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
     savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
     savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
+    savePreference(STORAGE_KEYS.annotationColor, elements.annotationColor.value);
+    savePreference(STORAGE_KEYS.annotationSize, elements.annotationSize.value);
     updatePreferenceLabels();
     setTextStyle(preset.textStyle || "bold");
     setPattern(preset.pattern || "solid");
     setMode(preset.mode || "mask");
     if (selection && preset.mode !== "text") canvas.focus({ preventScroll: true });
-    showToast(selection ? "Recent patch loaded. Press Enter to place it." : "Recent patch loaded. Draw a box to place it.");
+    showToast(selection ? "Recent tool loaded. Press Enter to place it." : "Recent tool loaded. Drag to place it.");
   }
 
   function showToast(message) {
@@ -754,9 +808,42 @@
     elements.imageMeta.textContent = `${source} · output ${dimensions.width} × ${dimensions.height}`;
   }
 
+  function updateViewTransform() {
+    elements.framePreview.style.transform = `translate3d(${viewPanX}px, ${viewPanY}px, 0) scale(${viewZoom})`;
+    elements.zoomValue.value = `${Math.round(viewZoom * 100)}%`;
+    elements.zoomOutButton.disabled = !imageLoaded || viewZoom <= MIN_VIEW_ZOOM;
+    elements.zoomInButton.disabled = !imageLoaded || viewZoom >= MAX_VIEW_ZOOM;
+    elements.fitViewButton.disabled = !imageLoaded;
+    elements.panModeButton.disabled = !imageLoaded;
+    elements.panModeButton.classList.toggle("is-active", panModeEnabled && imageLoaded);
+    elements.panModeButton.setAttribute("aria-pressed", String(panModeEnabled && imageLoaded));
+    elements.canvasWrap.classList.toggle("is-pan-mode", panModeEnabled && imageLoaded);
+  }
+
+  function setViewZoom(nextZoom) {
+    if (!imageLoaded) return;
+    viewZoom = Math.max(MIN_VIEW_ZOOM, Math.min(MAX_VIEW_ZOOM, Math.round(nextZoom * 20) / 20));
+    updateViewTransform();
+  }
+
+  function fitView({ notify = true } = {}) {
+    viewZoom = 1;
+    viewPanX = 0;
+    viewPanY = 0;
+    updateViewTransform();
+    if (notify && imageLoaded) showToast("View fitted to the workspace.");
+  }
+
+  function setPanMode(enabled) {
+    panModeEnabled = Boolean(enabled && imageLoaded);
+    updateViewTransform();
+    if (imageLoaded) showToast(panModeEnabled ? "Pan on. Drag the image to move it." : "Pan off. Drag to use the selected tool.");
+  }
+
   function updateFramePreview() {
     if (!imageLoaded) {
       elements.framePreview.hidden = true;
+      updateViewTransform();
       return;
     }
 
@@ -774,6 +861,7 @@
       canvas.style.removeProperty("height");
       canvas.style.removeProperty("border-radius");
       updateImageMeta();
+      updateViewTransform();
       window.requestAnimationFrame(render);
       return;
     }
@@ -805,6 +893,7 @@
     canvas.style.height = `${baseCanvas.height * imageScale}px`;
     canvas.style.borderRadius = `${radius}px`;
     updateImageMeta();
+    updateViewTransform();
     window.requestAnimationFrame(render);
   }
 
@@ -840,8 +929,14 @@
     imageName = name || "pasted-image";
     if (matchImageRatio) syncOutputToSourceSize();
     selection = null;
+    arrowStart = null;
+    arrowEnd = null;
     history = [];
     future = [];
+    panModeEnabled = false;
+    viewZoom = 1;
+    viewPanX = 0;
+    viewPanY = 0;
     elements.emptyState.hidden = true;
     elements.framePreview.hidden = false;
     canvas.hidden = false;
@@ -849,7 +944,7 @@
     elements.editControls.setAttribute("aria-disabled", "false");
     elements.copyButton.disabled = false;
     elements.downloadButton.disabled = false;
-    elements.workspaceTip.textContent = "Drag a box · Enter applies";
+    elements.workspaceTip.textContent = "Drag to mark · Enter applies";
     updateControls();
     updatePresentationUI();
     render();
@@ -955,6 +1050,35 @@
     };
   }
 
+  function drawSelectionOutline(targetContext) {
+    if (!selection) return;
+    const displayScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+    const lineWidth = Math.max(1, 2 * displayScale);
+    const handleSize = Math.max(5, 7 * displayScale);
+
+    targetContext.save();
+    targetContext.setLineDash([6 * displayScale, 4 * displayScale]);
+    targetContext.lineWidth = lineWidth;
+    targetContext.strokeStyle = "#2f6fed";
+    targetContext.strokeRect(selection.x, selection.y, selection.width, selection.height);
+    targetContext.setLineDash([]);
+
+    const corners = [
+      [selection.x, selection.y],
+      [selection.x + selection.width, selection.y],
+      [selection.x + selection.width, selection.y + selection.height],
+      [selection.x, selection.y + selection.height],
+    ];
+    targetContext.fillStyle = "#2f6fed";
+    targetContext.strokeStyle = "#ffffff";
+    targetContext.lineWidth = Math.max(1, displayScale);
+    corners.forEach(([x, y]) => {
+      targetContext.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+      targetContext.strokeRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+    });
+    targetContext.restore();
+  }
+
   function drawPatch(targetContext, includeOutline = false) {
     if (!selection) return;
 
@@ -980,37 +1104,109 @@
       );
     }
 
-    if (includeOutline) {
-      const displayScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
-      const lineWidth = Math.max(1, 2 * displayScale);
-      const handleSize = Math.max(5, 7 * displayScale);
-      targetContext.setLineDash([6 * displayScale, 4 * displayScale]);
-      targetContext.lineWidth = lineWidth;
-      targetContext.strokeStyle = "#2f6fed";
-      targetContext.strokeRect(selection.x, selection.y, selection.width, selection.height);
-      targetContext.setLineDash([]);
-
-      const corners = [
-        [selection.x, selection.y],
-        [selection.x + selection.width, selection.y],
-        [selection.x + selection.width, selection.y + selection.height],
-        [selection.x, selection.y + selection.height],
-      ];
-      targetContext.fillStyle = "#2f6fed";
-      targetContext.strokeStyle = "#ffffff";
-      targetContext.lineWidth = Math.max(1, displayScale);
-      corners.forEach(([x, y]) => {
-        targetContext.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
-        targetContext.strokeRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
-      });
-    }
     targetContext.restore();
+    if (includeOutline) drawSelectionOutline(targetContext);
+  }
+
+  function markerSize() {
+    return Math.max(2, Number(elements.annotationSize.value) || 6);
+  }
+
+  function prepareMarkerContext(targetContext, size) {
+    targetContext.strokeStyle = elements.annotationColor.value;
+    targetContext.fillStyle = elements.annotationColor.value;
+    targetContext.lineWidth = size;
+    targetContext.lineCap = "round";
+    targetContext.lineJoin = "round";
+    targetContext.shadowColor = "rgba(15, 23, 42, 0.2)";
+    targetContext.shadowBlur = Math.max(1, size * 0.65);
+    targetContext.shadowOffsetY = Math.max(1, size * 0.22);
+  }
+
+  function drawMarkerCircle(targetContext) {
+    const size = markerSize();
+    const centerX = selection.x + selection.width / 2;
+    const centerY = selection.y + selection.height / 2;
+    const radiusX = Math.max(0.5, selection.width / 2 - size / 2);
+    const radiusY = Math.max(0.5, selection.height / 2 - size / 2);
+
+    targetContext.save();
+    prepareMarkerContext(targetContext, size);
+    targetContext.beginPath();
+    targetContext.ellipse(centerX, centerY, radiusX, radiusY, -0.012, 0, Math.PI * 2);
+    targetContext.stroke();
+
+    targetContext.shadowColor = "transparent";
+    targetContext.globalAlpha = 0.28;
+    targetContext.lineWidth = Math.max(1, size * 0.42);
+    targetContext.beginPath();
+    targetContext.ellipse(centerX + size * 0.12, centerY - size * 0.08, radiusX, radiusY, 0.01, Math.PI * 0.12, Math.PI * 1.62);
+    targetContext.stroke();
+    targetContext.restore();
+  }
+
+  function resolvedArrowPoints() {
+    return {
+      start: arrowStart || { x: selection.x, y: selection.y },
+      end: arrowEnd || { x: selection.x + selection.width, y: selection.y + selection.height },
+    };
+  }
+
+  function arrowLength() {
+    if (!selection) return 0;
+    const { start, end } = resolvedArrowPoints();
+    return Math.hypot(end.x - start.x, end.y - start.y);
+  }
+
+  function drawMarkerArrow(targetContext) {
+    const { start, end } = resolvedArrowPoints();
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    const length = Math.hypot(deltaX, deltaY);
+    if (length < 1) return;
+
+    const size = markerSize();
+    const directionX = deltaX / length;
+    const directionY = deltaY / length;
+    const headLength = Math.min(length * 0.38, Math.max(size * 4.2, 16));
+    const headWidth = Math.min(length * 0.34, Math.max(size * 2.8, 12));
+    const baseX = end.x - directionX * headLength;
+    const baseY = end.y - directionY * headLength;
+    const normalX = -directionY;
+    const normalY = directionX;
+
+    targetContext.save();
+    prepareMarkerContext(targetContext, size);
+    targetContext.beginPath();
+    targetContext.moveTo(start.x, start.y);
+    targetContext.lineTo(baseX + directionX * size * 0.7, baseY + directionY * size * 0.7);
+    targetContext.stroke();
+
+    targetContext.beginPath();
+    targetContext.moveTo(end.x, end.y);
+    targetContext.lineTo(baseX + normalX * headWidth / 2, baseY + normalY * headWidth / 2);
+    targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
+    targetContext.closePath();
+    targetContext.fill();
+    targetContext.restore();
+  }
+
+  function drawAnnotation(targetContext, includeOutline = false) {
+    if (!selection) return;
+    if (mode === "circle") drawMarkerCircle(targetContext);
+    else drawMarkerArrow(targetContext);
+    if (includeOutline) drawSelectionOutline(targetContext);
+  }
+
+  function drawCurrentTool(targetContext, includeOutline = false) {
+    if (["circle", "arrow"].includes(mode)) drawAnnotation(targetContext, includeOutline);
+    else drawPatch(targetContext, includeOutline);
   }
 
   function drawPattern(targetContext) {
     if (pattern === "solid" || !selection) return;
 
-    const displayScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+    const displayScale = (canvas.width / Math.max(canvas.getBoundingClientRect().width, 1)) * viewZoom;
     const spacing = Math.max(8, Math.round(9 * displayScale));
     const tile = document.createElement("canvas");
     tile.width = spacing * 2;
@@ -1043,33 +1239,62 @@
     if (!imageLoaded) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(baseCanvas, 0, 0);
-    drawPatch(context, true);
+    drawCurrentTool(context, true);
   }
 
   function updateControls() {
-    const hasSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
-    elements.applyButton.disabled = !imageLoaded || !hasSelection;
-    elements.clearSelectionButton.disabled = !hasSelection;
+    const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
+    const hasToolSelection = mode === "arrow" ? arrowLength() >= 2 : hasAreaSelection;
+    elements.applyButton.disabled = !imageLoaded || !hasToolSelection;
+    elements.cropButton.disabled = !imageLoaded || !hasAreaSelection;
+    elements.clearSelectionButton.disabled = !selection;
     elements.undoButton.disabled = history.length === 0 || isRestoring;
     elements.redoButton.disabled = future.length === 0 || isRestoring;
-    elements.applyButtonLabel.textContent = mode === "mask" ? "Apply mask" : "Place text";
+    elements.applyButtonLabel.textContent = {
+      mask: "Apply mask",
+      text: "Place text",
+      circle: "Place circle",
+      arrow: "Place arrow",
+    }[mode];
     updateFontSizeUI();
 
-    if (hasSelection) {
-      elements.selectionReadout.textContent = `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
+    if (hasToolSelection) {
+      elements.selectionReadout.textContent = mode === "arrow"
+        ? `${Math.round(arrowLength())} px arrow`
+        : `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
     } else {
-      elements.selectionReadout.textContent = imageLoaded ? "Draw a box" : "Add an image first";
+      elements.selectionReadout.textContent = imageLoaded ? (mode === "arrow" ? "Drag an arrow" : "Draw a box") : "Add an image first";
     }
   }
 
   function setMode(nextMode) {
-    mode = nextMode;
+    if (panModeEnabled) {
+      panModeEnabled = false;
+      updateViewTransform();
+    }
+    mode = ["mask", "text", "circle", "arrow"].includes(nextMode) ? nextMode : "mask";
     const isText = mode === "text";
-    elements.maskModeButton.classList.toggle("is-active", !isText);
-    elements.maskModeButton.setAttribute("aria-pressed", String(!isText));
-    elements.textModeButton.classList.toggle("is-active", isText);
-    elements.textModeButton.setAttribute("aria-pressed", String(isText));
+    const isAnnotation = ["circle", "arrow"].includes(mode);
+    [
+      [elements.maskModeButton, "mask"],
+      [elements.textModeButton, "text"],
+      [elements.circleModeButton, "circle"],
+      [elements.arrowModeButton, "arrow"],
+    ].forEach(([button, buttonMode]) => {
+      const isActive = mode === buttonMode;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    elements.patchFillOptions.hidden = isAnnotation;
     elements.textOptions.hidden = !isText;
+    elements.annotationOptions.hidden = !isAnnotation;
+    elements.annotationNote.textContent = mode === "arrow"
+      ? "Drag from the tail toward the point."
+      : "Drag a box around the area to circle.";
+    if (mode === "arrow" && selection && (!arrowStart || !arrowEnd)) {
+      arrowStart = { x: selection.x, y: selection.y };
+      arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
+    }
     updateControls();
     render();
     if (isText && selection) elements.replacementText.focus({ preventScroll: true });
@@ -1084,10 +1309,18 @@
     updateControls();
     const image = new Image();
     image.onload = () => {
-      baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+      baseCanvas.width = image.naturalWidth;
+      baseCanvas.height = image.naturalHeight;
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
       baseContext.drawImage(image, 0, 0);
       selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+      if (matchImageRatio) syncOutputToSourceSize();
+      fitView({ notify: false });
       isRestoring = false;
+      updatePresentationUI();
       updateControls();
       render();
       scheduleCurrentImageSave();
@@ -1100,18 +1333,65 @@
     image.src = imageData;
   }
 
-  function applyPatch() {
-    if (!selection || elements.applyButton.disabled) return;
+  function rememberHistoryStep() {
     history.push(snapshot());
     if (history.length > 12) history.shift();
     future = [];
-    drawPatch(baseContext, false);
+  }
+
+  function applyCurrentTool() {
+    if (!selection || elements.applyButton.disabled) return;
+    rememberHistoryStep();
+    drawCurrentTool(baseContext, false);
     rememberCurrentPreset();
     selection = null;
+    arrowStart = null;
+    arrowEnd = null;
     updateControls();
     render();
     scheduleCurrentImageSave();
-    showToast(mode === "mask" ? "Mask applied." : "Text placed.");
+    showToast({
+      mask: "Mask applied.",
+      text: "Text placed.",
+      circle: "Circle placed.",
+      arrow: "Arrow placed.",
+    }[mode]);
+  }
+
+  function cropToSelection() {
+    if (!selection || elements.cropButton.disabled) return;
+    const left = Math.max(0, Math.floor(selection.x));
+    const top = Math.max(0, Math.floor(selection.y));
+    const right = Math.min(baseCanvas.width, Math.ceil(selection.x + selection.width));
+    const bottom = Math.min(baseCanvas.height, Math.ceil(selection.y + selection.height));
+    const width = right - left;
+    const height = bottom - top;
+    if (width < 2 || height < 2) return;
+    if (left === 0 && top === 0 && width === baseCanvas.width && height === baseCanvas.height) {
+      showToast("That selection already covers the full image.");
+      return;
+    }
+
+    rememberHistoryStep();
+    const cropped = document.createElement("canvas");
+    cropped.width = width;
+    cropped.height = height;
+    cropped.getContext("2d").drawImage(baseCanvas, left, top, width, height, 0, 0, width, height);
+    baseCanvas.width = width;
+    baseCanvas.height = height;
+    baseContext.drawImage(cropped, 0, 0);
+    canvas.width = width;
+    canvas.height = height;
+    selection = null;
+    arrowStart = null;
+    arrowEnd = null;
+    if (matchImageRatio) syncOutputToSourceSize();
+    fitView({ notify: false });
+    updatePresentationUI();
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+    showToast(`Cropped to ${width} × ${height} px.`);
   }
 
   function undo() {
@@ -1130,6 +1410,8 @@
 
   function clearSelection() {
     selection = null;
+    arrowStart = null;
+    arrowEnd = null;
     updateControls();
     render();
   }
@@ -1293,12 +1575,49 @@
   });
   window.addEventListener("drop", handleDrop);
 
+  elements.canvasWrap.addEventListener("pointerdown", (event) => {
+    const shouldPan = imageLoaded && (panModeEnabled || event.button === 1);
+    if (!shouldPan) return;
+    event.preventDefault();
+    event.stopPropagation();
+    elements.canvasWrap.setPointerCapture(event.pointerId);
+    isPanning = true;
+    panPointerStart = { x: event.clientX, y: event.clientY };
+    panOrigin = { x: viewPanX, y: viewPanY };
+    elements.canvasWrap.classList.add("is-panning");
+  }, true);
+
+  elements.canvasWrap.addEventListener("pointermove", (event) => {
+    if (!isPanning || !panPointerStart || !panOrigin) return;
+    viewPanX = panOrigin.x + event.clientX - panPointerStart.x;
+    viewPanY = panOrigin.y + event.clientY - panPointerStart.y;
+    updateViewTransform();
+  });
+
+  const finishPan = (event) => {
+    if (!isPanning) return;
+    if (elements.canvasWrap.hasPointerCapture(event.pointerId)) elements.canvasWrap.releasePointerCapture(event.pointerId);
+    isPanning = false;
+    panPointerStart = null;
+    panOrigin = null;
+    elements.canvasWrap.classList.remove("is-panning");
+  };
+  elements.canvasWrap.addEventListener("pointerup", finishPan);
+  elements.canvasWrap.addEventListener("pointercancel", finishPan);
+  elements.canvasWrap.addEventListener("wheel", (event) => {
+    if (!imageLoaded || (!event.ctrlKey && !event.metaKey)) return;
+    event.preventDefault();
+    setViewZoom(viewZoom + (event.deltaY < 0 ? 0.15 : -0.15));
+  }, { passive: false });
+
   canvas.addEventListener("pointerdown", (event) => {
-    if (!imageLoaded || event.button !== 0) return;
+    if (!imageLoaded || panModeEnabled || event.button !== 0) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(event.pointerId);
     dragStart = canvasPoint(event);
+    arrowStart = { ...dragStart };
+    arrowEnd = { ...dragStart };
     selection = { x: dragStart.x, y: dragStart.y, width: 0, height: 0 };
     isSelecting = true;
     canvas.classList.add("is-selecting");
@@ -1309,7 +1628,9 @@
 
   canvas.addEventListener("pointermove", (event) => {
     if (!isSelecting) return;
-    selection = normalizeBox(dragStart, canvasPoint(event));
+    const currentPoint = canvasPoint(event);
+    arrowEnd = { ...currentPoint };
+    selection = normalizeBox(dragStart, currentPoint);
     updateControls();
     render();
   });
@@ -1320,7 +1641,14 @@
     isSelecting = false;
     canvas.classList.remove("is-selecting");
     document.body.style.userSelect = "";
-    if (!selection || selection.width < 2 || selection.height < 2) selection = null;
+    const selectionIsTooSmall = mode === "arrow"
+      ? arrowLength() < 2
+      : !selection || selection.width < 2 || selection.height < 2;
+    if (selectionIsTooSmall) {
+      selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+    }
     updateControls();
     render();
     if (selection && mode === "text") elements.replacementText.focus({ preventScroll: true });
@@ -1335,7 +1663,7 @@
     if (event.key === "Enter" && selection) {
       event.preventDefault();
       event.stopPropagation();
-      applyPatch();
+      applyCurrentTool();
       return;
     }
 
@@ -1347,6 +1675,8 @@
         width: canvas.width * 0.5,
         height: canvas.height * 0.16,
       };
+      arrowStart = { x: selection.x, y: selection.y };
+      arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
       updateControls();
       render();
       return;
@@ -1365,9 +1695,21 @@
     if (event.shiftKey) {
       selection.width = Math.max(2, Math.min(canvas.width - selection.x, selection.width + direction[0]));
       selection.height = Math.max(2, Math.min(canvas.height - selection.y, selection.height + direction[1]));
+      arrowStart = { x: selection.x, y: selection.y };
+      arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
     } else {
+      const previousX = selection.x;
+      const previousY = selection.y;
       selection.x = Math.max(0, Math.min(canvas.width - selection.width, selection.x + direction[0]));
       selection.y = Math.max(0, Math.min(canvas.height - selection.height, selection.y + direction[1]));
+      if (arrowStart && arrowEnd) {
+        const movedX = selection.x - previousX;
+        const movedY = selection.y - previousY;
+        arrowStart.x += movedX;
+        arrowStart.y += movedY;
+        arrowEnd.x += movedX;
+        arrowEnd.y += movedY;
+      }
     }
     updateControls();
     render();
@@ -1375,6 +1717,8 @@
 
   elements.maskModeButton.addEventListener("click", () => setMode("mask"));
   elements.textModeButton.addEventListener("click", () => setMode("text"));
+  elements.circleModeButton.addEventListener("click", () => setMode("circle"));
+  elements.arrowModeButton.addEventListener("click", () => setMode("arrow"));
   elements.patternButtons.forEach((button) => {
     button.addEventListener("click", () => {
       setPattern(button.dataset.patchPattern);
@@ -1382,12 +1726,17 @@
       else if (selection) canvas.focus({ preventScroll: true });
     });
   });
-  elements.applyButton.addEventListener("click", applyPatch);
+  elements.applyButton.addEventListener("click", applyCurrentTool);
+  elements.cropButton.addEventListener("click", cropToSelection);
   elements.clearSelectionButton.addEventListener("click", clearSelection);
   elements.undoButton.addEventListener("click", undo);
   elements.redoButton.addEventListener("click", redo);
   elements.copyButton.addEventListener("click", copyImage);
   elements.downloadButton.addEventListener("click", downloadImage);
+  elements.zoomOutButton.addEventListener("click", () => setViewZoom(viewZoom - 0.25));
+  elements.zoomInButton.addEventListener("click", () => setViewZoom(viewZoom + 0.25));
+  elements.fitViewButton.addEventListener("click", () => fitView());
+  elements.panModeButton.addEventListener("click", () => setPanMode(!panModeEnabled));
   elements.frameEnabled.addEventListener("change", () => {
     frameEnabled = elements.frameEnabled.checked;
     savePreference(STORAGE_KEYS.frameEnabled, String(frameEnabled));
@@ -1423,11 +1772,11 @@
     updatePresentationUI();
   });
   elements.clearRecentButton.addEventListener("click", () => {
-    if (!window.confirm("Clear all recent patch presets?")) return;
+    if (!window.confirm("Clear all recent tool presets?")) return;
     recentPatches = [];
     savePreference(STORAGE_KEYS.recentPatches, "[]");
     renderRecentPatches();
-    showToast("Recent patches cleared.");
+    showToast("Recent tools cleared.");
   });
   elements.clearRecentImagesButton.addEventListener("click", async () => {
     if (!window.confirm("Clear saved image history? The image open now will stay open.")) return;
@@ -1454,6 +1803,16 @@
     savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
     render();
   });
+  elements.annotationColor.addEventListener("input", () => {
+    updatePreferenceLabels();
+    savePreference(STORAGE_KEYS.annotationColor, elements.annotationColor.value);
+    render();
+  });
+  elements.annotationSize.addEventListener("input", () => {
+    updatePreferenceLabels();
+    savePreference(STORAGE_KEYS.annotationSize, elements.annotationSize.value);
+    render();
+  });
   elements.textStyleButtons.forEach((button) => {
     button.addEventListener("click", () => setTextStyle(button.dataset.textStyle));
   });
@@ -1474,12 +1833,16 @@
   elements.replacementText.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      applyPatch();
+      applyCurrentTool();
     }
   });
 
   document.addEventListener("keydown", (event) => {
     const modifier = event.metaKey || event.ctrlKey;
+    if (event.key === "Escape" && panModeEnabled) {
+      setPanMode(false);
+      return;
+    }
     if (event.key === "Escape" && selection) {
       clearSelection();
       return;
@@ -1489,14 +1852,29 @@
       selection &&
       !event.defaultPrevented &&
       !modifier &&
-      !event.target.matches("button, input[type='text']") &&
+      !event.target.matches("button, input, textarea, select") &&
       !event.target.closest(".presentation-section")
     ) {
       event.preventDefault();
-      applyPatch();
+      applyCurrentTool();
       return;
     }
-    if (!modifier || event.target.matches("input[type='text']")) return;
+    if (!modifier || event.target.matches("input, textarea, select")) return;
+    if (imageLoaded && ["=", "+"].includes(event.key)) {
+      event.preventDefault();
+      setViewZoom(viewZoom + 0.25);
+      return;
+    }
+    if (imageLoaded && event.key === "-") {
+      event.preventDefault();
+      setViewZoom(viewZoom - 0.25);
+      return;
+    }
+    if (imageLoaded && event.key === "0") {
+      event.preventDefault();
+      fitView();
+      return;
+    }
     if (event.key.toLowerCase() === "z") {
       event.preventDefault();
       event.shiftKey ? redo() : undo();

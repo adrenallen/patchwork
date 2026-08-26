@@ -48,42 +48,50 @@
 
           <section class="tool-section edit-section" id="editControls" aria-disabled="true">
             <div class="section-heading">
-              <span class="step-label">Patch</span>
+              <span class="step-label">Tool</span>
               <span class="selection-readout" id="selectionReadout">Draw a box</span>
             </div>
 
-            <div class="segmented-control" role="group" aria-label="Patch type">
+            <div class="segmented-control patch-mode-control" role="group" aria-label="Editing tool">
               <button class="segment is-active" id="maskModeButton" type="button" aria-pressed="true">
                 <span class="mode-swatch" aria-hidden="true"></span> Mask
               </button>
               <button class="segment" id="textModeButton" type="button" aria-pressed="false">
                 <span class="text-glyph" aria-hidden="true">Aa</span> Replace text
               </button>
+              <button class="segment" id="circleModeButton" type="button" aria-pressed="false">
+                <span class="annotation-glyph circle-glyph" aria-hidden="true"></span> Circle
+              </button>
+              <button class="segment" id="arrowModeButton" type="button" aria-pressed="false">
+                <span class="annotation-glyph arrow-glyph" aria-hidden="true">↗</span> Arrow
+              </button>
             </div>
 
-            <div class="field-row">
-              <label class="field-label" for="backgroundColor">Background</label>
-              <div class="color-control">
-                <input id="backgroundColor" type="color" value="#111827" />
-                <output id="backgroundColorValue" for="backgroundColor">#111827</output>
+            <div id="patchFillOptions">
+              <div class="field-row">
+                <label class="field-label" for="backgroundColor">Background</label>
+                <div class="color-control">
+                  <input id="backgroundColor" type="color" value="#111827" />
+                  <output id="backgroundColorValue" for="backgroundColor">#111827</output>
+                </div>
               </div>
-            </div>
 
-            <div class="pattern-field">
-              <span class="field-label" id="patternLabel">Fill style</span>
-              <div class="pattern-control" role="group" aria-labelledby="patternLabel">
-                <button class="pattern-button is-active" type="button" data-patch-pattern="solid" aria-pressed="true">
-                  <span class="pattern-sample pattern-solid" aria-hidden="true"></span>
-                  <span>Solid</span>
-                </button>
-                <button class="pattern-button" type="button" data-patch-pattern="diagonal" aria-pressed="false">
-                  <span class="pattern-sample pattern-diagonal" aria-hidden="true"></span>
-                  <span>Diagonal</span>
-                </button>
-                <button class="pattern-button" type="button" data-patch-pattern="hatch" aria-pressed="false">
-                  <span class="pattern-sample pattern-hatch" aria-hidden="true"></span>
-                  <span>Hatch</span>
-                </button>
+              <div class="pattern-field">
+                <span class="field-label" id="patternLabel">Fill style</span>
+                <div class="pattern-control" role="group" aria-labelledby="patternLabel">
+                  <button class="pattern-button is-active" type="button" data-patch-pattern="solid" aria-pressed="true">
+                    <span class="pattern-sample pattern-solid" aria-hidden="true"></span>
+                    <span>Solid</span>
+                  </button>
+                  <button class="pattern-button" type="button" data-patch-pattern="diagonal" aria-pressed="false">
+                    <span class="pattern-sample pattern-diagonal" aria-hidden="true"></span>
+                    <span>Diagonal</span>
+                  </button>
+                  <button class="pattern-button" type="button" data-patch-pattern="hatch" aria-pressed="false">
+                    <span class="pattern-sample pattern-hatch" aria-hidden="true"></span>
+                    <span>Hatch</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -118,6 +126,21 @@
                 <input id="autoTextSize" type="checkbox" checked />
                 <span><strong>Auto size with patch</strong><small>Fits text to the box height and width.</small></span>
               </label>
+            </div>
+
+            <div class="annotation-options" id="annotationOptions" hidden>
+              <div class="field-row">
+                <label class="field-label" for="annotationColor">Marker color</label>
+                <div class="color-control">
+                  <input id="annotationColor" type="color" value="#ef4444" />
+                  <output id="annotationColorValue" for="annotationColor">#EF4444</output>
+                </div>
+              </div>
+              <label class="range-field annotation-size-field" for="annotationSize">
+                <span class="range-heading"><span>Marker size</span><output id="annotationSizeValue" for="annotationSize">6 px</output></span>
+                <input id="annotationSize" type="range" min="2" max="28" step="1" value="6" />
+              </label>
+              <p class="annotation-note" id="annotationNote">Drag a box around the area to circle.</p>
             </div>
 
             <button class="apply-button" id="applyButton" type="button" disabled>
@@ -210,13 +233,13 @@
             </div>
           </section>
 
-          <section class="recent-section" aria-label="Recent patch presets">
+          <section class="recent-section" aria-label="Recent tool presets">
             <div class="section-heading recent-heading">
-              <span class="step-label">Recent patches</span>
+              <span class="step-label">Recent tools</span>
               <button class="text-button" id="clearRecentButton" type="button" hidden>Clear</button>
             </div>
             <div class="recent-list" id="recentList">
-              <p class="recent-empty" id="recentEmpty">Placed patches will appear here for quick reuse.</p>
+              <p class="recent-empty" id="recentEmpty">Placed tools will appear here for quick reuse.</p>
             </div>
           </section>
 
@@ -226,6 +249,9 @@
             </button>
             <button class="icon-text-button" id="redoButton" type="button" disabled aria-label="Redo last edit">
               <span aria-hidden="true">↷</span> Redo
+            </button>
+            <button class="icon-text-button" id="cropButton" type="button" disabled aria-label="Crop image to selected box">
+              Crop
             </button>
             <button class="icon-text-button" id="clearSelectionButton" type="button" disabled>
               Clear box
@@ -237,6 +263,13 @@
         <section class="workspace" id="workspace" aria-label="Image workspace">
           <div class="workspace-bar">
             <p id="imageMeta">No image loaded</p>
+            <div class="view-controls" aria-label="Canvas view controls">
+              <button class="view-button" id="zoomOutButton" type="button" aria-label="Zoom out" disabled>−</button>
+              <output class="zoom-value" id="zoomValue" aria-live="polite">100%</output>
+              <button class="view-button" id="zoomInButton" type="button" aria-label="Zoom in" disabled>+</button>
+              <button class="view-button view-word-button" id="fitViewButton" type="button" disabled>Fit</button>
+              <button class="view-button view-word-button" id="panModeButton" type="button" aria-pressed="false" disabled>Pan</button>
+            </div>
             <p class="workspace-tip" id="workspaceTip">Paste anywhere to begin</p>
           </div>
 
@@ -249,7 +282,7 @@
               <span>Then drag over anything you want to cover.</span>
             </button>
             <div class="frame-preview" id="framePreview" hidden>
-              <canvas id="editorCanvas" aria-label="Image editor. Drag to select a rectangular area. Keyboard users can press Enter to create a box, use arrow keys to move it, and Shift plus arrow keys to resize it." hidden></canvas>
+              <canvas id="editorCanvas" aria-label="Image editor. Drag to use the selected tool. Keyboard users can press Enter to create a box, use arrow keys to move it, and Shift plus arrow keys to resize it." hidden></canvas>
             </div>
           </div>
         </section>
