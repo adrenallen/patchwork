@@ -65,6 +65,9 @@
               <button class="segment" id="arrowModeButton" type="button" aria-pressed="false">
                 <span class="annotation-glyph arrow-glyph" aria-hidden="true">↗</span> Arrow
               </button>
+              <button class="segment" id="lineModeButton" type="button" aria-pressed="false">
+                <span class="annotation-glyph line-glyph" aria-hidden="true"></span> Line
+              </button>
             </div>
 
             <div id="patchFillOptions">
@@ -140,6 +143,13 @@
                 <span class="range-heading"><span>Marker size</span><output id="annotationSizeValue" for="annotationSize">6 px</output></span>
                 <input id="annotationSize" type="range" min="2" max="28" step="1" value="6" />
               </label>
+              <div class="annotation-style-field">
+                <span class="field-label" id="annotationStyleLabel">Stroke style</span>
+                <div class="segmented-control annotation-style-control" role="group" aria-labelledby="annotationStyleLabel">
+                  <button class="segment annotation-style-button is-active" type="button" data-annotation-style="clean" aria-pressed="true">Clean</button>
+                  <button class="segment annotation-style-button" type="button" data-annotation-style="hand" aria-pressed="false">Hand drawn</button>
+                </div>
+              </div>
               <p class="annotation-note" id="annotationNote">Drag a box around the area to circle.</p>
             </div>
 
@@ -282,7 +292,7 @@
               <span>Then drag over anything you want to cover.</span>
             </button>
             <div class="frame-preview" id="framePreview" hidden>
-              <canvas id="editorCanvas" aria-label="Image editor. Drag to use the selected tool. Keyboard users can press Enter to create a box, use arrow keys to move it, and Shift plus arrow keys to resize it." hidden></canvas>
+              <canvas id="editorCanvas" aria-label="Image editor. Drag to use the selected tool. Click an existing item to select it, drag it to move, or drag its handles to resize. Lines and arrows have a middle diamond handle for bending. Keyboard users can press Enter to place a new item, arrow keys to move a selected item, and Delete to remove it." hidden></canvas>
             </div>
           </div>
         </section>

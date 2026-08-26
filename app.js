@@ -3,6 +3,8 @@
   const context = canvas.getContext("2d", { willReadFrequently: true });
   const baseCanvas = document.createElement("canvas");
   const baseContext = baseCanvas.getContext("2d", { willReadFrequently: true });
+  const sourceCanvas = document.createElement("canvas");
+  const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
 
   const elements = {
     fileInput: document.querySelector("#fileInput"),
@@ -16,6 +18,7 @@
     textModeButton: document.querySelector("#textModeButton"),
     circleModeButton: document.querySelector("#circleModeButton"),
     arrowModeButton: document.querySelector("#arrowModeButton"),
+    lineModeButton: document.querySelector("#lineModeButton"),
     patchFillOptions: document.querySelector("#patchFillOptions"),
     textOptions: document.querySelector("#textOptions"),
     annotationOptions: document.querySelector("#annotationOptions"),
@@ -23,6 +26,7 @@
     annotationColorValue: document.querySelector("#annotationColorValue"),
     annotationSize: document.querySelector("#annotationSize"),
     annotationSizeValue: document.querySelector("#annotationSizeValue"),
+    annotationStyleButtons: [...document.querySelectorAll(".annotation-style-button")],
     annotationNote: document.querySelector("#annotationNote"),
     backgroundColor: document.querySelector("#backgroundColor"),
     backgroundColorValue: document.querySelector("#backgroundColorValue"),
@@ -80,6 +84,7 @@
     autoTextSize: "patchwork.autoTextSize",
     annotationColor: "patchwork.annotationColor",
     annotationSize: "patchwork.annotationSize",
+    annotationStyle: "patchwork.annotationStyle",
     pattern: "patchwork.pattern",
     recentPatches: "patchwork.recentPatches",
     frameEnabled: "patchwork.frameEnabled",
@@ -115,6 +120,7 @@
   let mode = "mask";
   let pattern = "solid";
   let textStyle = "bold";
+  let annotationStyle = "clean";
   let frameEnabled = false;
   let aspectPreset = "square";
   let matchImageRatio = true;
@@ -131,6 +137,11 @@
   let isPanning = false;
   let panPointerStart = null;
   let panOrigin = null;
+  let placedObjects = [];
+  let activeObjectId = null;
+  let objectInteraction = null;
+  let pendingSettingsHistory = null;
+  let settingsHistoryTimer = null;
   let history = [];
   let future = [];
   let isRestoring = false;
@@ -164,6 +175,15 @@
   function createImageId() {
     if (typeof window.crypto?.randomUUID === "function") return window.crypto.randomUUID();
     return `image-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function createObjectId() {
+    if (typeof window.crypto?.randomUUID === "function") return window.crypto.randomUUID();
+    return `object-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function clonePlacedObjects(objects = placedObjects) {
+    return objects.map((object) => ({ ...object }));
   }
 
   function openImageDatabase() {
@@ -331,6 +351,7 @@
     window.clearTimeout(imageSaveTimer);
     imageSaveTimer = null;
     if (!imageLoaded || !currentImageId) return Promise.resolve(true);
+    rebuildBaseCanvas();
 
     const record = {
       id: currentImageId,
@@ -339,8 +360,9 @@
       width: baseCanvas.width,
       height: baseCanvas.height,
       updatedAt: Date.now(),
+      objects: clonePlacedObjects(),
     };
-    const blobs = Promise.all([canvasBlob(baseCanvas), createThumbnailBlob()]).then(
+    const blobs = Promise.all([canvasBlob(baseCanvas), createThumbnailBlob(), canvasBlob(sourceCanvas)]).then(
       (value) => ({ value }),
       (error) => ({ error }),
     );
@@ -348,8 +370,8 @@
       try {
         const blobResult = await blobs;
         if (blobResult.error) throw blobResult.error;
-        const [blob, thumbnailBlob] = blobResult.value;
-        await storeImageRecord({ ...record, blob, thumbnailBlob });
+        const [blob, thumbnailBlob, sourceBlob] = blobResult.value;
+        await storeImageRecord({ ...record, blob, thumbnailBlob, sourceBlob });
         if (refresh) await loadSavedImages();
         return true;
       } catch {
@@ -376,6 +398,8 @@
     elements.autoTextSize.checked = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
     elements.annotationColor.value = readPreference(STORAGE_KEYS.annotationColor, "#ef4444");
     elements.annotationSize.value = String(clampNumber(readPreference(STORAGE_KEYS.annotationSize, "6"), 2, 28, 6));
+    const savedAnnotationStyle = readPreference(STORAGE_KEYS.annotationStyle, "clean");
+    setAnnotationStyle(["clean", "hand"].includes(savedAnnotationStyle) ? savedAnnotationStyle : "clean", false);
     const savedTextStyle = readPreference(STORAGE_KEYS.textStyle, "bold");
     setTextStyle(["normal", "bold", "italic"].includes(savedTextStyle) ? savedTextStyle : "bold", false);
     const savedPattern = readPreference(STORAGE_KEYS.pattern, "solid");
@@ -575,6 +599,19 @@
     });
     if (remember) savePreference(STORAGE_KEYS.textStyle, textStyle);
     updateFontSizeUI();
+    syncActiveObjectFromControls();
+    render();
+  }
+
+  function setAnnotationStyle(nextStyle, remember = true) {
+    annotationStyle = ["clean", "hand"].includes(nextStyle) ? nextStyle : "clean";
+    elements.annotationStyleButtons.forEach((button) => {
+      const isActive = button.dataset.annotationStyle === annotationStyle;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    if (remember) savePreference(STORAGE_KEYS.annotationStyle, annotationStyle);
+    syncActiveObjectFromControls();
     render();
   }
 
@@ -624,6 +661,7 @@
       button.setAttribute("aria-pressed", String(isActive));
     });
     if (remember) savePreference(STORAGE_KEYS.pattern, pattern);
+    syncActiveObjectFromControls();
     render();
   }
 
@@ -632,7 +670,7 @@
       const saved = JSON.parse(readPreference(STORAGE_KEYS.recentPatches, "[]"));
       const normalizedPatches = Array.isArray(saved)
         ? saved
-            .filter((preset) => preset && ["mask", "text", "circle", "arrow"].includes(preset.mode))
+            .filter((preset) => preset && ["mask", "text", "circle", "arrow", "line"].includes(preset.mode))
             .map((preset) => ({
               mode: preset.mode,
               pattern: ["solid", "diagonal", "hatch"].includes(preset.pattern) ? preset.pattern : "solid",
@@ -644,6 +682,7 @@
               textStyle: ["normal", "bold", "italic"].includes(preset.textStyle) ? preset.textStyle : "bold",
               annotationColor: preset.annotationColor || "#ef4444",
               annotationSize: clampNumber(preset.annotationSize, 2, 28, 6),
+              annotationStyle: ["clean", "hand"].includes(preset.annotationStyle) ? preset.annotationStyle : "clean",
             }))
         : [];
       const seen = new Set();
@@ -674,6 +713,7 @@
       autoTextSize: elements.autoTextSize.checked,
       annotationColor: elements.annotationColor.value,
       annotationSize: Number(elements.annotationSize.value),
+      annotationStyle,
     };
   }
 
@@ -681,8 +721,8 @@
     if (preset.mode === "mask") {
       return JSON.stringify([preset.mode, preset.pattern, preset.backgroundColor]);
     }
-    if (["circle", "arrow"].includes(preset.mode)) {
-      return JSON.stringify([preset.mode, preset.annotationColor, preset.annotationSize]);
+    if (["circle", "arrow", "line"].includes(preset.mode)) {
+      return JSON.stringify([preset.mode, preset.annotationColor, preset.annotationSize, preset.annotationStyle]);
     }
     return JSON.stringify([
       preset.mode,
@@ -717,7 +757,7 @@
     elements.clearRecentButton.hidden = recentPatches.length === 0;
 
     recentPatches.forEach((preset, index) => {
-      const isAnnotation = ["circle", "arrow"].includes(preset.mode);
+      const isAnnotation = ["circle", "arrow", "line"].includes(preset.mode);
       const presetName = preset.mode === "text"
         ? preset.text || "Text patch"
         : isAnnotation
@@ -734,7 +774,11 @@
       swatch.style.setProperty("--sample-color", preset.backgroundColor || "#111827");
       swatch.style.setProperty("--sample-line", getPatternLineColor(preset.backgroundColor || "#111827", 0.32));
       swatch.style.setProperty("--sample-text", preset.textColor || "#ffffff");
-      swatch.textContent = preset.mode === "text" ? "Aa" : isAnnotation ? (preset.mode === "circle" ? "○" : "↗") : "";
+      swatch.textContent = preset.mode === "text"
+        ? "Aa"
+        : isAnnotation
+          ? ({ circle: "○", arrow: "↗", line: "╱" }[preset.mode])
+          : "";
       if (preset.mode === "text") {
         swatch.style.fontStyle = preset.textStyle === "italic" ? "italic" : "normal";
         swatch.style.fontWeight = preset.textStyle === "bold" ? "700" : "400";
@@ -750,7 +794,7 @@
       title.textContent = presetName;
       const detail = document.createElement("small");
       detail.textContent = isAnnotation
-        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px marker`
+        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? "Hand drawn" : "Clean"}`
         : preset.mode === "text"
           ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
           : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
@@ -768,6 +812,11 @@
   }
 
   function reusePreset(preset) {
+    commitPendingSettingsHistory();
+    activeObjectId = null;
+    selection = null;
+    arrowStart = null;
+    arrowEnd = null;
     rememberPreset(preset);
     elements.backgroundColor.value = preset.backgroundColor || "#111827";
     elements.textColor.value = preset.textColor || "#ffffff";
@@ -785,6 +834,7 @@
     updatePreferenceLabels();
     setTextStyle(preset.textStyle || "bold");
     setPattern(preset.pattern || "solid");
+    setAnnotationStyle(preset.annotationStyle || "clean");
     setMode(preset.mode || "mask");
     if (selection && preset.mode !== "text") canvas.focus({ preventScroll: true });
     showToast(selection ? "Recent tool loaded. Press Enter to place it." : "Recent tool loaded. Drag to place it.");
@@ -915,13 +965,18 @@
     );
   }
 
-  function activateImage(image, { id, label, name }) {
+  function activateImage(image, { id, label, name, objects = [] }) {
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
+    sourceCanvas.width = image.naturalWidth;
+    sourceCanvas.height = image.naturalHeight;
+    sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+    sourceContext.drawImage(image, 0, 0);
     baseCanvas.width = image.naturalWidth;
     baseCanvas.height = image.naturalHeight;
-    baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
-    baseContext.drawImage(image, 0, 0);
+    placedObjects = clonePlacedObjects(objects);
+    activeObjectId = null;
+    rebuildBaseCanvas();
 
     imageLoaded = true;
     currentImageId = id;
@@ -944,7 +999,7 @@
     elements.editControls.setAttribute("aria-disabled", "false");
     elements.copyButton.disabled = false;
     elements.downloadButton.disabled = false;
-    elements.workspaceTip.textContent = "Drag to mark · Enter applies";
+    elements.workspaceTip.textContent = "Drag to mark · click an item to edit";
     updateControls();
     updatePresentationUI();
     render();
@@ -977,12 +1032,14 @@
     await saveCurrentImage({ notifyFailure: true, refresh: false });
 
     try {
-      const image = await imageFromBlob(record.blob);
+      const hasEditableDocument = Boolean(record.sourceBlob && Array.isArray(record.objects));
+      const image = await imageFromBlob(hasEditableDocument ? record.sourceBlob : record.blob);
       if (!imageDimensionsAreValid(image)) throw new Error("The saved image is too large.");
       activateImage(image, {
         id: record.id,
         label: record.label,
         name: record.name,
+        objects: hasEditableDocument ? record.objects : [],
       });
       try {
         await storeImageRecord({ ...record, updatedAt: Date.now() });
@@ -1050,6 +1107,182 @@
     };
   }
 
+  function viewHitTolerance() {
+    return Math.max(4, 10 * canvas.width / Math.max(canvas.getBoundingClientRect().width, 1));
+  }
+
+  function distanceBetween(left, right) {
+    return Math.hypot(right.x - left.x, right.y - left.y);
+  }
+
+  function distanceToSegment(point, start, end) {
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+    if (!lengthSquared) return distanceBetween(point, start);
+    const progress = Math.max(0, Math.min(1, ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared));
+    return distanceBetween(point, { x: start.x + progress * deltaX, y: start.y + progress * deltaY });
+  }
+
+  function curveDistance(point, object) {
+    const start = { x: object.startX, y: object.startY };
+    const control = { x: object.controlX, y: object.controlY };
+    const end = { x: object.endX, y: object.endY };
+    let nearest = Number.POSITIVE_INFINITY;
+    let previous = start;
+    for (let step = 1; step <= 28; step += 1) {
+      const current = quadraticPoint(start, control, end, step / 28);
+      nearest = Math.min(nearest, distanceToSegment(point, previous, current));
+      previous = current;
+    }
+    return nearest;
+  }
+
+  function objectContainsPoint(object, point) {
+    if (["arrow", "line"].includes(object.mode)) {
+      return curveDistance(point, object) <= viewHitTolerance() + object.annotationSize / 2;
+    }
+    const bounds = objectBounds(object);
+    return point.x >= bounds.x && point.x <= bounds.x + bounds.width && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  }
+
+  function findObjectAtPoint(point) {
+    for (let index = placedObjects.length - 1; index >= 0; index -= 1) {
+      if (objectContainsPoint(placedObjects[index], point)) return placedObjects[index];
+    }
+    return null;
+  }
+
+  function activeHandleAtPoint(point) {
+    const object = activeObject();
+    if (!object) return null;
+    const tolerance = viewHitTolerance();
+    if (["arrow", "line"].includes(object.mode)) {
+      const handles = [
+        ["start", { x: object.startX, y: object.startY }],
+        ["end", { x: object.endX, y: object.endY }],
+        ["control", { x: object.controlX, y: object.controlY }],
+      ];
+      return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
+    }
+    const bounds = objectBounds(object);
+    const handles = [
+      ["nw", { x: bounds.x, y: bounds.y }],
+      ["ne", { x: bounds.x + bounds.width, y: bounds.y }],
+      ["se", { x: bounds.x + bounds.width, y: bounds.y + bounds.height }],
+      ["sw", { x: bounds.x, y: bounds.y + bounds.height }],
+    ];
+    return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
+  }
+
+  function translatedObject(original, deltaX, deltaY) {
+    const translated = { ...original };
+    if (["arrow", "line"].includes(translated.mode)) {
+      translated.startX += deltaX;
+      translated.startY += deltaY;
+      translated.endX += deltaX;
+      translated.endY += deltaY;
+      translated.controlX += deltaX;
+      translated.controlY += deltaY;
+    } else {
+      translated.x += deltaX;
+      translated.y += deltaY;
+    }
+    return translated;
+  }
+
+  function beginObjectInteraction(object, point, handle = null) {
+    commitPendingSettingsHistory();
+    objectInteraction = {
+      objectId: object.id,
+      kind: handle ? "resize" : "move",
+      handle,
+      startPoint: { ...point },
+      original: { ...object },
+      beforeSnapshot: null,
+      changed: false,
+    };
+  }
+
+  function boxForResize(original, handle, point) {
+    const opposite = {
+      nw: { x: original.x + original.width, y: original.y + original.height },
+      ne: { x: original.x, y: original.y + original.height },
+      se: { x: original.x, y: original.y },
+      sw: { x: original.x + original.width, y: original.y },
+    }[handle];
+    const constrained = {
+      x: Math.max(0, Math.min(canvas.width, point.x)),
+      y: Math.max(0, Math.min(canvas.height, point.y)),
+    };
+    const box = normalizeBox(opposite, constrained);
+    if (box.width < 4) {
+      box.x = handle.includes("w") ? opposite.x - 4 : opposite.x;
+      box.width = 4;
+    }
+    if (box.height < 4) {
+      box.y = handle.includes("n") ? opposite.y - 4 : opposite.y;
+      box.height = 4;
+    }
+    return box;
+  }
+
+  function updateObjectInteraction(point) {
+    if (!objectInteraction) return;
+    const index = placedObjects.findIndex((object) => object.id === objectInteraction.objectId);
+    if (index < 0) return;
+    const original = objectInteraction.original;
+    let updated = { ...original };
+
+    if (objectInteraction.kind === "move") {
+      const bounds = objectBounds(original);
+      const requestedX = point.x - objectInteraction.startPoint.x;
+      const requestedY = point.y - objectInteraction.startPoint.y;
+      const deltaX = Math.max(-bounds.x, Math.min(canvas.width - bounds.x - bounds.width, requestedX));
+      const deltaY = Math.max(-bounds.y, Math.min(canvas.height - bounds.y - bounds.height, requestedY));
+      updated = translatedObject(original, deltaX, deltaY);
+    } else if (["arrow", "line"].includes(original.mode)) {
+      const clampedPoint = {
+        x: Math.max(0, Math.min(canvas.width, point.x)),
+        y: Math.max(0, Math.min(canvas.height, point.y)),
+      };
+      if (objectInteraction.handle === "start") {
+        updated.startX = clampedPoint.x;
+        updated.startY = clampedPoint.y;
+      } else if (objectInteraction.handle === "end") {
+        updated.endX = clampedPoint.x;
+        updated.endY = clampedPoint.y;
+      } else {
+        updated.controlX = clampedPoint.x;
+        updated.controlY = clampedPoint.y;
+      }
+    } else {
+      Object.assign(updated, boxForResize(original, objectInteraction.handle, point));
+    }
+
+    const changed = JSON.stringify(updated) !== JSON.stringify(original);
+    if (changed && !objectInteraction.beforeSnapshot) objectInteraction.beforeSnapshot = snapshot();
+    objectInteraction.changed = changed;
+    placedObjects[index] = updated;
+    syncSelectionFromActiveObject();
+    updateControls();
+    render();
+  }
+
+  function finishObjectInteraction() {
+    if (!objectInteraction) return;
+    if (objectInteraction.changed && objectInteraction.beforeSnapshot) {
+      history.push(objectInteraction.beforeSnapshot);
+      if (history.length > 12) history.shift();
+      future = [];
+      rebuildBaseCanvas();
+      scheduleCurrentImageSave();
+    }
+    objectInteraction = null;
+    updateControls();
+    render();
+  }
+
   function drawSelectionOutline(targetContext) {
     if (!selection) return;
     const displayScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
@@ -1112,9 +1345,9 @@
     return Math.max(2, Number(elements.annotationSize.value) || 6);
   }
 
-  function prepareMarkerContext(targetContext, size) {
-    targetContext.strokeStyle = elements.annotationColor.value;
-    targetContext.fillStyle = elements.annotationColor.value;
+  function prepareMarkerContext(targetContext, size, color = elements.annotationColor.value) {
+    targetContext.strokeStyle = color;
+    targetContext.fillStyle = color;
     targetContext.lineWidth = size;
     targetContext.lineCap = "round";
     targetContext.lineJoin = "round";
@@ -1123,26 +1356,39 @@
     targetContext.shadowOffsetY = Math.max(1, size * 0.22);
   }
 
-  function drawMarkerCircle(targetContext) {
-    const size = markerSize();
-    const centerX = selection.x + selection.width / 2;
-    const centerY = selection.y + selection.height / 2;
-    const radiusX = Math.max(0.5, selection.width / 2 - size / 2);
-    const radiusY = Math.max(0.5, selection.height / 2 - size / 2);
+  function drawStyledCircle(targetContext, box, { color, size, style }) {
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height / 2;
+    const radiusX = Math.max(0.5, box.width / 2 - size / 2);
+    const radiusY = Math.max(0.5, box.height / 2 - size / 2);
 
     targetContext.save();
-    prepareMarkerContext(targetContext, size);
+    prepareMarkerContext(targetContext, size, color);
     targetContext.beginPath();
-    targetContext.ellipse(centerX, centerY, radiusX, radiusY, -0.012, 0, Math.PI * 2);
+    targetContext.ellipse(centerX, centerY, radiusX, radiusY, style === "hand" ? -0.025 : 0, 0, Math.PI * 2);
     targetContext.stroke();
 
-    targetContext.shadowColor = "transparent";
-    targetContext.globalAlpha = 0.28;
-    targetContext.lineWidth = Math.max(1, size * 0.42);
-    targetContext.beginPath();
-    targetContext.ellipse(centerX + size * 0.12, centerY - size * 0.08, radiusX, radiusY, 0.01, Math.PI * 0.12, Math.PI * 1.62);
-    targetContext.stroke();
+    if (style === "hand") {
+      targetContext.shadowColor = "transparent";
+      targetContext.globalAlpha = 0.52;
+      targetContext.lineWidth = Math.max(1, size * 0.48);
+      targetContext.beginPath();
+      targetContext.ellipse(centerX + size * 0.28, centerY - size * 0.18, radiusX * 0.995, radiusY * 1.01, 0.018, Math.PI * 0.08, Math.PI * 1.92);
+      targetContext.stroke();
+      targetContext.globalAlpha = 0.26;
+      targetContext.beginPath();
+      targetContext.ellipse(centerX - size * 0.16, centerY + size * 0.12, radiusX * 1.008, radiusY * 0.992, -0.01, Math.PI * 0.72, Math.PI * 1.55);
+      targetContext.stroke();
+    }
     targetContext.restore();
+  }
+
+  function drawMarkerCircle(targetContext) {
+    drawStyledCircle(targetContext, selection, {
+      color: elements.annotationColor.value,
+      size: markerSize(),
+      style: annotationStyle,
+    });
   }
 
   function resolvedArrowPoints() {
@@ -1158,48 +1404,111 @@
     return Math.hypot(end.x - start.x, end.y - start.y);
   }
 
-  function drawMarkerArrow(targetContext) {
-    const { start, end } = resolvedArrowPoints();
+  function midpoint(start, end) {
+    return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  }
+
+  function drawStyledCurve(targetContext, { start, end, control, color, size, style, arrowHead }) {
     const deltaX = end.x - start.x;
     const deltaY = end.y - start.y;
     const length = Math.hypot(deltaX, deltaY);
     if (length < 1) return;
 
-    const size = markerSize();
-    const directionX = deltaX / length;
-    const directionY = deltaY / length;
-    const headLength = Math.min(length * 0.38, Math.max(size * 4.2, 16));
-    const headWidth = Math.min(length * 0.34, Math.max(size * 2.8, 12));
-    const baseX = end.x - directionX * headLength;
-    const baseY = end.y - directionY * headLength;
+    const tangentX = end.x - control.x || deltaX;
+    const tangentY = end.y - control.y || deltaY;
+    const tangentLength = Math.hypot(tangentX, tangentY) || length;
+    const directionX = tangentX / tangentLength;
+    const directionY = tangentY / tangentLength;
     const normalX = -directionY;
     const normalY = directionX;
 
     targetContext.save();
-    prepareMarkerContext(targetContext, size);
+    prepareMarkerContext(targetContext, size, color);
     targetContext.beginPath();
     targetContext.moveTo(start.x, start.y);
-    targetContext.lineTo(baseX + directionX * size * 0.7, baseY + directionY * size * 0.7);
+    targetContext.quadraticCurveTo(control.x, control.y, end.x, end.y);
     targetContext.stroke();
 
-    targetContext.beginPath();
-    targetContext.moveTo(end.x, end.y);
-    targetContext.lineTo(baseX + normalX * headWidth / 2, baseY + normalY * headWidth / 2);
-    targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
-    targetContext.closePath();
-    targetContext.fill();
+    if (style === "hand") {
+      const chordNormalX = -deltaY / length;
+      const chordNormalY = deltaX / length;
+      const wobble = Math.max(0.7, size * 0.22);
+      targetContext.shadowColor = "transparent";
+      targetContext.globalAlpha = 0.46;
+      targetContext.lineWidth = Math.max(1, size * 0.5);
+      targetContext.beginPath();
+      targetContext.moveTo(start.x + chordNormalX * wobble, start.y + chordNormalY * wobble);
+      targetContext.quadraticCurveTo(
+        control.x - chordNormalX * wobble * 1.6,
+        control.y - chordNormalY * wobble * 1.6,
+        end.x - chordNormalX * wobble * 0.4,
+        end.y - chordNormalY * wobble * 0.4,
+      );
+      targetContext.stroke();
+    }
+
+    if (arrowHead) {
+      const headLength = Math.min(length * 0.38, Math.max(size * 4.2, 16));
+      const headWidth = Math.min(length * 0.34, Math.max(size * 2.8, 12));
+      const baseX = end.x - directionX * headLength;
+      const baseY = end.y - directionY * headLength;
+      targetContext.shadowColor = "rgba(15, 23, 42, 0.16)";
+      targetContext.globalAlpha = 1;
+      if (style === "hand") {
+        targetContext.lineWidth = size;
+        targetContext.beginPath();
+        targetContext.moveTo(baseX + normalX * headWidth / 2, baseY + normalY * headWidth / 2);
+        targetContext.lineTo(end.x, end.y);
+        targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
+        targetContext.stroke();
+      } else {
+        targetContext.beginPath();
+        targetContext.moveTo(end.x, end.y);
+        targetContext.lineTo(baseX + normalX * headWidth / 2, baseY + normalY * headWidth / 2);
+        targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
+        targetContext.closePath();
+        targetContext.fill();
+      }
+    }
     targetContext.restore();
+  }
+
+  function drawMarkerArrow(targetContext) {
+    const { start, end } = resolvedArrowPoints();
+    drawStyledCurve(targetContext, {
+      start,
+      end,
+      control: midpoint(start, end),
+      color: elements.annotationColor.value,
+      size: markerSize(),
+      style: annotationStyle,
+      arrowHead: true,
+    });
+  }
+
+  function drawMarkerLine(targetContext) {
+    const { start, end } = resolvedArrowPoints();
+    drawStyledCurve(targetContext, {
+      start,
+      end,
+      control: midpoint(start, end),
+      color: elements.annotationColor.value,
+      size: markerSize(),
+      style: annotationStyle,
+      arrowHead: false,
+    });
   }
 
   function drawAnnotation(targetContext, includeOutline = false) {
     if (!selection) return;
     if (mode === "circle") drawMarkerCircle(targetContext);
-    else drawMarkerArrow(targetContext);
+    else if (mode === "arrow") drawMarkerArrow(targetContext);
+    else drawMarkerLine(targetContext);
     if (includeOutline) drawSelectionOutline(targetContext);
   }
 
   function drawCurrentTool(targetContext, includeOutline = false) {
-    if (["circle", "arrow"].includes(mode)) drawAnnotation(targetContext, includeOutline);
+    if (["circle", "arrow", "line"].includes(mode)) drawAnnotation(targetContext, includeOutline);
     else drawPatch(targetContext, includeOutline);
   }
 
@@ -1235,51 +1544,231 @@
     targetContext.fillRect(selection.x, selection.y, selection.width, selection.height);
   }
 
+  function activeObject() {
+    return placedObjects.find((object) => object.id === activeObjectId) || null;
+  }
+
+  function objectBounds(object) {
+    if (!["arrow", "line"].includes(object.mode)) {
+      return { x: object.x, y: object.y, width: object.width, height: object.height };
+    }
+    const minimumX = Math.min(object.startX, object.endX, object.controlX);
+    const minimumY = Math.min(object.startY, object.endY, object.controlY);
+    const maximumX = Math.max(object.startX, object.endX, object.controlX);
+    const maximumY = Math.max(object.startY, object.endY, object.controlY);
+    return { x: minimumX, y: minimumY, width: maximumX - minimumX, height: maximumY - minimumY };
+  }
+
+  function syncSelectionFromActiveObject() {
+    const object = activeObject();
+    if (!object) return;
+    selection = objectBounds(object);
+    if (["arrow", "line"].includes(object.mode)) {
+      arrowStart = { x: object.startX, y: object.startY };
+      arrowEnd = { x: object.endX, y: object.endY };
+    } else {
+      arrowStart = null;
+      arrowEnd = null;
+    }
+  }
+
+  function drawObjectPattern(targetContext, object) {
+    if (object.pattern === "solid") return;
+    const spacing = Math.max(8, object.patternSpacing || 12);
+    const tile = document.createElement("canvas");
+    tile.width = spacing * 2;
+    tile.height = spacing * 2;
+    const tileContext = tile.getContext("2d");
+    tileContext.strokeStyle = getPatternLineColor(object.backgroundColor, 0.24);
+    tileContext.lineWidth = Math.max(1, object.patternLineWidth || 2);
+    const drawDiagonal = (reverse = false) => {
+      tileContext.beginPath();
+      for (let offset = -tile.width; offset <= tile.width * 2; offset += spacing) {
+        tileContext.moveTo(offset, 0);
+        tileContext.lineTo(reverse ? offset - tile.height : offset + tile.height, tile.height);
+      }
+      tileContext.stroke();
+    };
+    drawDiagonal(false);
+    if (object.pattern === "hatch") drawDiagonal(true);
+    targetContext.fillStyle = targetContext.createPattern(tile, "repeat");
+    targetContext.fillRect(object.x, object.y, object.width, object.height);
+  }
+
+  function objectFont(object, size) {
+    const weight = object.textStyle === "bold" ? 700 : 400;
+    const italic = object.textStyle === "italic" ? "italic " : "";
+    return `${italic}${weight} ${size}px ${fontFamily()}`;
+  }
+
+  function objectFontSize(targetContext, object) {
+    if (!object.autoTextSize) return object.fontSize;
+    let size = Math.max(1, object.height * 0.62);
+    if (!object.text) return size;
+    for (let pass = 0; pass < 2; pass += 1) {
+      const padding = Math.max(4, Math.min(size * 0.42, object.width * 0.08));
+      const availableWidth = Math.max(1, object.width - padding * 2);
+      targetContext.font = objectFont(object, size);
+      const measuredWidth = targetContext.measureText(object.text).width;
+      if (measuredWidth <= availableWidth) break;
+      size *= availableWidth / measuredWidth;
+    }
+    return Math.max(1, size);
+  }
+
+  function drawPlacedObject(targetContext, object) {
+    if (["mask", "text"].includes(object.mode)) {
+      targetContext.save();
+      targetContext.fillStyle = object.backgroundColor;
+      targetContext.fillRect(object.x, object.y, object.width, object.height);
+      drawObjectPattern(targetContext, object);
+      if (object.mode === "text" && object.text) {
+        const size = objectFontSize(targetContext, object);
+        const padding = Math.max(4, Math.min(size * 0.42, object.width * 0.08));
+        targetContext.beginPath();
+        targetContext.rect(object.x, object.y, object.width, object.height);
+        targetContext.clip();
+        targetContext.fillStyle = object.textColor;
+        targetContext.font = objectFont(object, size);
+        targetContext.textAlign = "left";
+        targetContext.textBaseline = "middle";
+        targetContext.fillText(object.text, object.x + padding, object.y + object.height / 2);
+      }
+      targetContext.restore();
+      return;
+    }
+
+    if (object.mode === "circle") {
+      drawStyledCircle(targetContext, object, {
+        color: object.annotationColor,
+        size: object.annotationSize,
+        style: object.annotationStyle || "clean",
+      });
+      return;
+    }
+
+    drawStyledCurve(targetContext, {
+      start: { x: object.startX, y: object.startY },
+      end: { x: object.endX, y: object.endY },
+      control: { x: object.controlX, y: object.controlY },
+      color: object.annotationColor,
+      size: object.annotationSize,
+      style: object.annotationStyle || "clean",
+      arrowHead: object.mode === "arrow",
+    });
+  }
+
+  function rebuildBaseCanvas() {
+    if (!sourceCanvas.width || !sourceCanvas.height) return;
+    if (baseCanvas.width !== sourceCanvas.width) baseCanvas.width = sourceCanvas.width;
+    if (baseCanvas.height !== sourceCanvas.height) baseCanvas.height = sourceCanvas.height;
+    baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+    baseContext.drawImage(sourceCanvas, 0, 0);
+    placedObjects.forEach((object) => drawPlacedObject(baseContext, object));
+  }
+
+  function quadraticPoint(start, control, end, progress) {
+    const inverse = 1 - progress;
+    return {
+      x: inverse * inverse * start.x + 2 * inverse * progress * control.x + progress * progress * end.x,
+      y: inverse * inverse * start.y + 2 * inverse * progress * control.y + progress * progress * end.y,
+    };
+  }
+
+  function drawObjectSelection(targetContext, object) {
+    if (!["arrow", "line"].includes(object.mode)) {
+      drawSelectionOutline(targetContext);
+      return;
+    }
+
+    const displayScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+    const handleSize = Math.max(6, 8 * displayScale);
+    const start = { x: object.startX, y: object.startY };
+    const end = { x: object.endX, y: object.endY };
+    const control = { x: object.controlX, y: object.controlY };
+    const curveMiddle = quadraticPoint(start, control, end, 0.5);
+    targetContext.save();
+    targetContext.strokeStyle = "rgba(47, 111, 237, 0.72)";
+    targetContext.lineWidth = Math.max(1, displayScale);
+    targetContext.setLineDash([4 * displayScale, 4 * displayScale]);
+    targetContext.beginPath();
+    targetContext.moveTo(curveMiddle.x, curveMiddle.y);
+    targetContext.lineTo(control.x, control.y);
+    targetContext.stroke();
+    targetContext.setLineDash([]);
+    targetContext.fillStyle = "#2f6fed";
+    targetContext.strokeStyle = "white";
+    [start, end].forEach((point) => {
+      targetContext.fillRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+      targetContext.strokeRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+    });
+    targetContext.translate(control.x, control.y);
+    targetContext.rotate(Math.PI / 4);
+    targetContext.fillRect(-handleSize * 0.46, -handleSize * 0.46, handleSize * 0.92, handleSize * 0.92);
+    targetContext.strokeRect(-handleSize * 0.46, -handleSize * 0.46, handleSize * 0.92, handleSize * 0.92);
+    targetContext.restore();
+  }
+
   function render() {
     if (!imageLoaded) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(baseCanvas, 0, 0);
-    drawCurrentTool(context, true);
+    context.drawImage(sourceCanvas, 0, 0);
+    placedObjects.forEach((object) => drawPlacedObject(context, object));
+    const selectedObject = activeObject();
+    if (selectedObject) drawObjectSelection(context, selectedObject);
+    else drawCurrentTool(context, true);
   }
 
   function updateControls() {
+    const selectedObject = activeObject();
     const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
-    const hasToolSelection = mode === "arrow" ? arrowLength() >= 2 : hasAreaSelection;
-    elements.applyButton.disabled = !imageLoaded || !hasToolSelection;
+    const hasToolSelection = ["arrow", "line"].includes(mode) ? arrowLength() >= 2 : hasAreaSelection;
+    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject);
     elements.cropButton.disabled = !imageLoaded || !hasAreaSelection;
     elements.clearSelectionButton.disabled = !selection;
     elements.undoButton.disabled = history.length === 0 || isRestoring;
     elements.redoButton.disabled = future.length === 0 || isRestoring;
-    elements.applyButtonLabel.textContent = {
+    elements.applyButtonLabel.textContent = selectedObject ? "Selected item" : {
       mask: "Apply mask",
       text: "Place text",
       circle: "Place circle",
       arrow: "Place arrow",
+      line: "Place line",
     }[mode];
     updateFontSizeUI();
 
     if (hasToolSelection) {
-      elements.selectionReadout.textContent = mode === "arrow"
-        ? `${Math.round(arrowLength())} px arrow`
+      elements.selectionReadout.textContent = ["arrow", "line"].includes(mode)
+        ? `${Math.round(arrowLength())} px ${mode}`
         : `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
     } else {
-      elements.selectionReadout.textContent = imageLoaded ? (mode === "arrow" ? "Drag an arrow" : "Draw a box") : "Add an image first";
+      elements.selectionReadout.textContent = imageLoaded
+        ? (["arrow", "line"].includes(mode) ? `Drag a ${mode}` : "Draw a box")
+        : "Add an image first";
     }
   }
 
-  function setMode(nextMode) {
+  function setMode(nextMode, { preserveActive = false } = {}) {
     if (panModeEnabled) {
       panModeEnabled = false;
       updateViewTransform();
     }
-    mode = ["mask", "text", "circle", "arrow"].includes(nextMode) ? nextMode : "mask";
+    if (!preserveActive && activeObjectId) {
+      commitPendingSettingsHistory();
+      activeObjectId = null;
+      selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+    }
+    mode = ["mask", "text", "circle", "arrow", "line"].includes(nextMode) ? nextMode : "mask";
     const isText = mode === "text";
-    const isAnnotation = ["circle", "arrow"].includes(mode);
+    const isAnnotation = ["circle", "arrow", "line"].includes(mode);
     [
       [elements.maskModeButton, "mask"],
       [elements.textModeButton, "text"],
       [elements.circleModeButton, "circle"],
       [elements.arrowModeButton, "arrow"],
+      [elements.lineModeButton, "line"],
     ].forEach(([button, buttonMode]) => {
       const isActive = mode === buttonMode;
       button.classList.toggle("is-active", isActive);
@@ -1288,10 +1777,10 @@
     elements.patchFillOptions.hidden = isAnnotation;
     elements.textOptions.hidden = !isText;
     elements.annotationOptions.hidden = !isAnnotation;
-    elements.annotationNote.textContent = mode === "arrow"
-      ? "Drag from the tail toward the point."
+    elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
+      ? `Drag the ${mode}, then move the diamond handle to bend it.`
       : "Drag a box around the area to circle.";
-    if (mode === "arrow" && selection && (!arrowStart || !arrowEnd)) {
+    if (["arrow", "line"].includes(mode) && selection && (!arrowStart || !arrowEnd)) {
       arrowStart = { x: selection.x, y: selection.y };
       arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
     }
@@ -1300,20 +1789,95 @@
     if (isText && selection) elements.replacementText.focus({ preventScroll: true });
   }
 
-  function snapshot() {
-    return baseCanvas.toDataURL("image/png");
+  function selectPlacedObject(object) {
+    commitPendingSettingsHistory();
+    activeObjectId = object.id;
+    syncSelectionFromActiveObject();
+    setMode(object.mode, { preserveActive: true });
+    elements.backgroundColor.value = object.backgroundColor || "#111827";
+    elements.textColor.value = object.textColor || "#ffffff";
+    elements.fontSize.value = String(object.fontSize || 28);
+    elements.autoTextSize.checked = object.autoTextSize === true;
+    elements.replacementText.value = object.text || "";
+    elements.annotationColor.value = object.annotationColor || "#ef4444";
+    elements.annotationSize.value = String(object.annotationSize || 6);
+    textStyle = ["normal", "bold", "italic"].includes(object.textStyle) ? object.textStyle : "bold";
+    elements.textStyleButtons.forEach((button) => {
+      const isActive = button.dataset.textStyle === textStyle;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    pattern = ["solid", "diagonal", "hatch"].includes(object.pattern) ? object.pattern : "solid";
+    elements.patternButtons.forEach((button) => {
+      const isActive = button.dataset.patchPattern === pattern;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    annotationStyle = ["clean", "hand"].includes(object.annotationStyle) ? object.annotationStyle : "clean";
+    elements.annotationStyleButtons.forEach((button) => {
+      const isActive = button.dataset.annotationStyle === annotationStyle;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    updatePreferenceLabels();
+    updateControls();
+    render();
   }
 
-  function restoreSnapshot(imageData) {
+  function commitPendingSettingsHistory() {
+    window.clearTimeout(settingsHistoryTimer);
+    settingsHistoryTimer = null;
+    if (!pendingSettingsHistory) return;
+    history.push(pendingSettingsHistory);
+    if (history.length > 12) history.shift();
+    future = [];
+    pendingSettingsHistory = null;
+    updateControls();
+  }
+
+  function syncActiveObjectFromControls() {
+    const object = activeObject();
+    if (!object) return;
+    if (!pendingSettingsHistory) pendingSettingsHistory = snapshot();
+    object.pattern = pattern;
+    object.backgroundColor = elements.backgroundColor.value;
+    object.text = object.mode === "text" ? elements.replacementText.value.trim() : object.text;
+    object.textColor = elements.textColor.value;
+    object.textStyle = textStyle;
+    object.fontSize = Number(elements.fontSize.value);
+    object.autoTextSize = elements.autoTextSize.checked;
+    object.annotationColor = elements.annotationColor.value;
+    object.annotationSize = markerSize();
+    object.annotationStyle = annotationStyle;
+    rebuildBaseCanvas();
+    render();
+    scheduleCurrentImageSave();
+    window.clearTimeout(settingsHistoryTimer);
+    settingsHistoryTimer = window.setTimeout(commitPendingSettingsHistory, 450);
+  }
+
+  function snapshot() {
+    return {
+      sourceData: sourceCanvas.toDataURL("image/png"),
+      objects: clonePlacedObjects(),
+    };
+  }
+
+  function restoreSnapshot(documentSnapshot) {
     isRestoring = true;
+    activeObjectId = null;
     updateControls();
     const image = new Image();
     image.onload = () => {
+      sourceCanvas.width = image.naturalWidth;
+      sourceCanvas.height = image.naturalHeight;
+      sourceContext.drawImage(image, 0, 0);
       baseCanvas.width = image.naturalWidth;
       baseCanvas.height = image.naturalHeight;
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
-      baseContext.drawImage(image, 0, 0);
+      placedObjects = clonePlacedObjects(documentSnapshot.objects || []);
+      rebuildBaseCanvas();
       selection = null;
       arrowStart = null;
       arrowEnd = null;
@@ -1330,23 +1894,65 @@
       updateControls();
       showToast("That history step could not be restored.");
     };
-    image.src = imageData;
+    image.src = documentSnapshot.sourceData;
   }
 
   function rememberHistoryStep() {
+    commitPendingSettingsHistory();
     history.push(snapshot());
     if (history.length > 12) history.shift();
     future = [];
   }
 
+  function createPlacedObject() {
+    const common = {
+      id: createObjectId(),
+      mode,
+      pattern,
+      backgroundColor: elements.backgroundColor.value,
+      text: mode === "text" ? elements.replacementText.value.trim() : "",
+      textColor: elements.textColor.value,
+      textStyle,
+      fontSize: Number(elements.fontSize.value),
+      autoTextSize: elements.autoTextSize.checked,
+      annotationColor: elements.annotationColor.value,
+      annotationSize: markerSize(),
+      annotationStyle,
+    };
+    if (["arrow", "line"].includes(mode)) {
+      const { start, end } = resolvedArrowPoints();
+      const control = midpoint(start, end);
+      return {
+        ...common,
+        startX: start.x,
+        startY: start.y,
+        endX: end.x,
+        endY: end.y,
+        controlX: control.x,
+        controlY: control.y,
+      };
+    }
+    const displayScale = (canvas.width / Math.max(canvas.getBoundingClientRect().width, 1)) * viewZoom;
+    return {
+      ...common,
+      x: selection.x,
+      y: selection.y,
+      width: selection.width,
+      height: selection.height,
+      patternSpacing: Math.max(8, Math.round(9 * displayScale)),
+      patternLineWidth: Math.max(1, Math.round(1.5 * displayScale)),
+    };
+  }
+
   function applyCurrentTool() {
     if (!selection || elements.applyButton.disabled) return;
     rememberHistoryStep();
-    drawCurrentTool(baseContext, false);
+    const object = createPlacedObject();
+    placedObjects.push(object);
+    activeObjectId = object.id;
+    syncSelectionFromActiveObject();
+    rebuildBaseCanvas();
     rememberCurrentPreset();
-    selection = null;
-    arrowStart = null;
-    arrowEnd = null;
     updateControls();
     render();
     scheduleCurrentImageSave();
@@ -1355,6 +1961,7 @@
       text: "Text placed.",
       circle: "Circle placed.",
       arrow: "Arrow placed.",
+      line: "Line placed.",
     }[mode]);
   }
 
@@ -1376,15 +1983,39 @@
     const cropped = document.createElement("canvas");
     cropped.width = width;
     cropped.height = height;
-    cropped.getContext("2d").drawImage(baseCanvas, left, top, width, height, 0, 0, width, height);
+    cropped.getContext("2d").drawImage(sourceCanvas, left, top, width, height, 0, 0, width, height);
+    placedObjects = placedObjects
+      .filter((object) => {
+        const bounds = objectBounds(object);
+        return bounds.x + bounds.width >= left && bounds.y + bounds.height >= top && bounds.x <= right && bounds.y <= bottom;
+      })
+      .map((object) => {
+        const translated = { ...object };
+        if (["arrow", "line"].includes(translated.mode)) {
+          translated.startX -= left;
+          translated.startY -= top;
+          translated.endX -= left;
+          translated.endY -= top;
+          translated.controlX -= left;
+          translated.controlY -= top;
+        } else {
+          translated.x -= left;
+          translated.y -= top;
+        }
+        return translated;
+      });
+    sourceCanvas.width = width;
+    sourceCanvas.height = height;
+    sourceContext.drawImage(cropped, 0, 0);
     baseCanvas.width = width;
     baseCanvas.height = height;
-    baseContext.drawImage(cropped, 0, 0);
     canvas.width = width;
     canvas.height = height;
+    activeObjectId = null;
     selection = null;
     arrowStart = null;
     arrowEnd = null;
+    rebuildBaseCanvas();
     if (matchImageRatio) syncOutputToSourceSize();
     fitView({ notify: false });
     updatePresentationUI();
@@ -1395,6 +2026,7 @@
   }
 
   function undo() {
+    commitPendingSettingsHistory();
     if (!history.length || isRestoring) return;
     future.push(snapshot());
     restoreSnapshot(history.pop());
@@ -1402,6 +2034,7 @@
   }
 
   function redo() {
+    commitPendingSettingsHistory();
     if (!future.length || isRestoring) return;
     history.push(snapshot());
     restoreSnapshot(future.pop());
@@ -1409,11 +2042,32 @@
   }
 
   function clearSelection() {
+    commitPendingSettingsHistory();
+    activeObjectId = null;
+    objectInteraction = null;
     selection = null;
     arrowStart = null;
     arrowEnd = null;
     updateControls();
     render();
+  }
+
+  function deleteActiveObject() {
+    const object = activeObject();
+    if (!object) return false;
+    rememberHistoryStep();
+    placedObjects = placedObjects.filter((placedObject) => placedObject.id !== object.id);
+    activeObjectId = null;
+    objectInteraction = null;
+    selection = null;
+    arrowStart = null;
+    arrowEnd = null;
+    rebuildBaseCanvas();
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+    showToast("Item removed.");
+    return true;
   }
 
   function fillGradient(targetContext, width, height) {
@@ -1615,7 +2269,27 @@
     event.preventDefault();
     canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(event.pointerId);
-    dragStart = canvasPoint(event);
+    const point = canvasPoint(event);
+    const selectedHandle = activeHandleAtPoint(point);
+    if (activeObject() && selectedHandle) {
+      beginObjectInteraction(activeObject(), point, selectedHandle);
+      canvas.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+      return;
+    }
+
+    const hitObject = findObjectAtPoint(point);
+    if (hitObject) {
+      if (hitObject.id !== activeObjectId) selectPlacedObject(hitObject);
+      beginObjectInteraction(hitObject, point, activeHandleAtPoint(point));
+      canvas.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+      return;
+    }
+
+    commitPendingSettingsHistory();
+    activeObjectId = null;
+    dragStart = point;
     arrowStart = { ...dragStart };
     arrowEnd = { ...dragStart };
     selection = { x: dragStart.x, y: dragStart.y, width: 0, height: 0 };
@@ -1627,8 +2301,22 @@
   });
 
   canvas.addEventListener("pointermove", (event) => {
-    if (!isSelecting) return;
     const currentPoint = canvasPoint(event);
+    if (objectInteraction) {
+      updateObjectInteraction(currentPoint);
+      return;
+    }
+
+    if (!isSelecting) {
+      const handle = activeHandleAtPoint(currentPoint);
+      if (["nw", "se"].includes(handle)) canvas.style.cursor = "nwse-resize";
+      else if (["ne", "sw"].includes(handle)) canvas.style.cursor = "nesw-resize";
+      else if (["start", "end", "control"].includes(handle)) canvas.style.cursor = "grab";
+      else if (findObjectAtPoint(currentPoint)) canvas.style.cursor = "move";
+      else canvas.style.cursor = "crosshair";
+      return;
+    }
+
     arrowEnd = { ...currentPoint };
     selection = normalizeBox(dragStart, currentPoint);
     updateControls();
@@ -1636,12 +2324,19 @@
   });
 
   function finishSelection(event) {
+    if (objectInteraction) {
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      document.body.style.userSelect = "";
+      finishObjectInteraction();
+      canvas.style.cursor = "crosshair";
+      return;
+    }
     if (!isSelecting) return;
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     isSelecting = false;
     canvas.classList.remove("is-selecting");
     document.body.style.userSelect = "";
-    const selectionIsTooSmall = mode === "arrow"
+    const selectionIsTooSmall = ["arrow", "line"].includes(mode)
       ? arrowLength() < 2
       : !selection || selection.width < 2 || selection.height < 2;
     if (selectionIsTooSmall) {
@@ -1660,7 +2355,39 @@
   canvas.addEventListener("keydown", (event) => {
     if (!imageLoaded) return;
 
-    if (event.key === "Enter" && selection) {
+    const selectedObject = activeObject();
+    if (selectedObject && ["Delete", "Backspace"].includes(event.key)) {
+      event.preventDefault();
+      deleteActiveObject();
+      return;
+    }
+
+    if (selectedObject && event.key.startsWith("Arrow")) {
+      event.preventDefault();
+      const step = event.altKey ? 1 : 10;
+      const [requestedX, requestedY] = {
+        ArrowLeft: [-step, 0],
+        ArrowRight: [step, 0],
+        ArrowUp: [0, -step],
+        ArrowDown: [0, step],
+      }[event.key];
+      const bounds = objectBounds(selectedObject);
+      const deltaX = Math.max(-bounds.x, Math.min(canvas.width - bounds.x - bounds.width, requestedX));
+      const deltaY = Math.max(-bounds.y, Math.min(canvas.height - bounds.y - bounds.height, requestedY));
+      if (deltaX || deltaY) {
+        rememberHistoryStep();
+        const index = placedObjects.findIndex((object) => object.id === selectedObject.id);
+        placedObjects[index] = translatedObject(selectedObject, deltaX, deltaY);
+        syncSelectionFromActiveObject();
+        rebuildBaseCanvas();
+        updateControls();
+        render();
+        scheduleCurrentImageSave();
+      }
+      return;
+    }
+
+    if (event.key === "Enter" && selection && !selectedObject) {
       event.preventDefault();
       event.stopPropagation();
       applyCurrentTool();
@@ -1719,12 +2446,16 @@
   elements.textModeButton.addEventListener("click", () => setMode("text"));
   elements.circleModeButton.addEventListener("click", () => setMode("circle"));
   elements.arrowModeButton.addEventListener("click", () => setMode("arrow"));
+  elements.lineModeButton.addEventListener("click", () => setMode("line"));
   elements.patternButtons.forEach((button) => {
     button.addEventListener("click", () => {
       setPattern(button.dataset.patchPattern);
       if (selection && mode === "text") elements.replacementText.focus({ preventScroll: true });
       else if (selection) canvas.focus({ preventScroll: true });
     });
+  });
+  elements.annotationStyleButtons.forEach((button) => {
+    button.addEventListener("click", () => setAnnotationStyle(button.dataset.annotationStyle));
   });
   elements.applyButton.addEventListener("click", applyCurrentTool);
   elements.cropButton.addEventListener("click", cropToSelection);
@@ -1796,22 +2527,26 @@
   elements.backgroundColor.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.backgroundColor, elements.backgroundColor.value);
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
   elements.textColor.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
   elements.annotationColor.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.annotationColor, elements.annotationColor.value);
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
   elements.annotationSize.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.annotationSize, elements.annotationSize.value);
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
   elements.textStyleButtons.forEach((button) => {
     button.addEventListener("click", () => setTextStyle(button.dataset.textStyle));
@@ -1819,17 +2554,29 @@
   elements.fontSize.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
   elements.autoTextSize.addEventListener("change", () => {
     savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
     updateFontSizeUI();
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
   elements.replacementText.addEventListener("input", () => {
     updateFontSizeUI();
-    render();
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
   });
+  [
+    elements.backgroundColor,
+    elements.textColor,
+    elements.annotationColor,
+    elements.annotationSize,
+    elements.fontSize,
+    elements.autoTextSize,
+    elements.replacementText,
+  ].forEach((input) => input.addEventListener("change", commitPendingSettingsHistory));
   elements.replacementText.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -1839,6 +2586,16 @@
 
   document.addEventListener("keydown", (event) => {
     const modifier = event.metaKey || event.ctrlKey;
+    if (
+      imageLoaded &&
+      activeObject() &&
+      ["Delete", "Backspace"].includes(event.key) &&
+      !event.target.matches("input, textarea, select")
+    ) {
+      event.preventDefault();
+      deleteActiveObject();
+      return;
+    }
     if (event.key === "Escape" && panModeEnabled) {
       setPanMode(false);
       return;

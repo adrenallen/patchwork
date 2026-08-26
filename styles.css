@@ -382,6 +382,10 @@ kbd {
   gap: 2px;
 }
 
+#lineModeButton {
+  grid-column: 1 / -1;
+}
+
 .mode-swatch {
   width: 13px;
   height: 9px;
@@ -413,6 +417,15 @@ kbd {
 
 .arrow-glyph {
   transform: translateY(-1px);
+}
+
+.line-glyph::before {
+  width: 15px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+  transform: rotate(-38deg);
 }
 
 .field-row {
@@ -619,6 +632,22 @@ input[type="color"]::-webkit-color-swatch {
 
 .annotation-size-field {
   margin: 6px 0 10px;
+}
+
+.annotation-style-field {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 11px;
+}
+
+.annotation-style-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+.annotation-style-button {
+  min-height: 32px;
+  font-size: 10px;
 }
 
 .annotation-note {
