@@ -355,7 +355,7 @@
     matchImageRatio = readPreference(STORAGE_KEYS.matchImageRatio, "true") === "true";
     if (matchImageRatio) aspectPreset = "source";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
-    if (!GRADIENTS[gradientName]) gradientName = "dusk";
+    if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
     elements.frameEnabled.checked = frameEnabled;
     elements.matchImageRatio.checked = matchImageRatio;
     elements.outputWidth.value = String(clampNumber(readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
@@ -385,8 +385,13 @@
   }
 
   function gradientCss(name = gradientName) {
+    if (name === "transparent") return "transparent";
     const gradient = GRADIENTS[name] || GRADIENTS.dusk;
     return `linear-gradient(${gradient.angle}deg, ${gradient.stops.join(", ")})`;
+  }
+
+  function frameBackgroundIsTransparent() {
+    return gradientName === "transparent" || Number(elements.framePadding.value) === 0;
   }
 
   function updatePresentationUI() {
@@ -490,7 +495,7 @@
   }
 
   function setGradient(name) {
-    gradientName = GRADIENTS[name] ? name : "dusk";
+    gradientName = (name === "transparent" || GRADIENTS[name]) ? name : "dusk";
     savePreference(STORAGE_KEYS.gradient, gradientName);
     updatePresentationUI();
   }
@@ -742,6 +747,8 @@
     elements.framePreview.classList.toggle("is-framed", frameEnabled);
 
     if (!frameEnabled) {
+      elements.framePreview.classList.remove("shows-transparency");
+      elements.framePreview.classList.remove("is-zero-padding");
       elements.framePreview.style.removeProperty("width");
       elements.framePreview.style.removeProperty("height");
       elements.framePreview.style.removeProperty("padding");
@@ -767,11 +774,16 @@
     const availableImageHeight = Math.max(1, previewHeight - verticalPadding * 2);
     const imageScale = Math.min(availableImageWidth / baseCanvas.width, availableImageHeight / baseCanvas.height);
     const radius = Number(elements.cornerRadius.value) * previewScale;
+    const transparentBackground = frameBackgroundIsTransparent();
+    const zeroPadding = paddingRatio === 0;
 
     elements.framePreview.style.width = `${previewWidth}px`;
     elements.framePreview.style.height = `${previewHeight}px`;
     elements.framePreview.style.padding = `${verticalPadding}px ${horizontalPadding}px`;
-    elements.framePreview.style.background = gradientCss();
+    elements.framePreview.classList.toggle("shows-transparency", transparentBackground);
+    elements.framePreview.classList.toggle("is-zero-padding", zeroPadding);
+    if (transparentBackground) elements.framePreview.style.removeProperty("background");
+    else elements.framePreview.style.background = gradientCss();
     canvas.style.width = `${baseCanvas.width * imageScale}px`;
     canvas.style.height = `${baseCanvas.height * imageScale}px`;
     canvas.style.borderRadius = `${radius}px`;
@@ -1151,7 +1163,7 @@
     const outputContext = output.getContext("2d");
     outputContext.imageSmoothingEnabled = true;
     outputContext.imageSmoothingQuality = "high";
-    fillGradient(outputContext, output.width, output.height);
+    if (!frameBackgroundIsTransparent()) fillGradient(outputContext, output.width, output.height);
 
     const paddingRatio = Number(elements.framePadding.value) / 100;
     const horizontalPadding = output.width * paddingRatio;
@@ -1168,9 +1180,11 @@
 
     outputContext.save();
     roundedRectanglePath(outputContext, imageX, imageY, imageWidth, imageHeight, radius);
-    outputContext.shadowColor = "rgba(15, 23, 42, 0.32)";
-    outputContext.shadowBlur = shadowUnit * 0.035;
-    outputContext.shadowOffsetY = shadowUnit * 0.018;
+    if (paddingRatio > 0) {
+      outputContext.shadowColor = "rgba(15, 23, 42, 0.32)";
+      outputContext.shadowBlur = shadowUnit * 0.035;
+      outputContext.shadowOffsetY = shadowUnit * 0.018;
+    }
     outputContext.fillStyle = "#ffffff";
     outputContext.fill();
     outputContext.restore();

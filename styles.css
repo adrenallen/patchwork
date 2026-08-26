@@ -860,7 +860,7 @@ input[type="range"] {
 
 .gradient-presets {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 7px;
 }
 
@@ -902,9 +902,25 @@ input[type="range"] {
 .gradient-iris { background: linear-gradient(135deg, #363795, #8b5cf6 48%, #ec4899); }
 .gradient-mint { background: linear-gradient(135deg, #b9fbc0, #39c6b0 50%, #157a87); }
 .gradient-graphite { background: linear-gradient(135deg, #64748b, #26354b 55%, #0f172a); }
+.gradient-transparent {
+  background-color: #f8fafc;
+  background-image:
+    linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
+    linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
+    linear-gradient(-45deg, transparent 75%, #cbd5e1 75%);
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+  background-size: 10px 10px;
+}
 
 .presentation-range {
   margin: -2px 0 0;
+}
+
+.transparency-note {
+  margin: -7px 0 2px;
+  color: var(--muted);
+  font: 8px/1.4 var(--utility);
 }
 
 .image-history-section,
@@ -1169,8 +1185,23 @@ input[type="range"] {
   overflow: hidden;
 }
 
+.frame-preview.is-framed.shows-transparency {
+  background-color: #f8fafc;
+  background-image:
+    linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
+    linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
+    linear-gradient(-45deg, transparent 75%, #cbd5e1 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
 .frame-preview.is-framed #editorCanvas {
   box-shadow: 0 15px 36px rgba(15, 23, 42, 0.28), 0 3px 8px rgba(15, 23, 42, 0.16);
+}
+
+.frame-preview.is-framed.is-zero-padding #editorCanvas {
+  box-shadow: none;
 }
 
 .empty-state {

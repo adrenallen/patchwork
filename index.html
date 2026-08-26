@@ -176,8 +176,9 @@
               </fieldset>
 
               <fieldset class="control-group">
-                <legend>Gradient</legend>
-                <div class="gradient-presets" role="group" aria-label="Gradient background">
+                <legend>Background</legend>
+                <div class="gradient-presets" role="group" aria-label="Share canvas background">
+                  <button class="gradient-button gradient-transparent" type="button" data-gradient="transparent" aria-label="Transparent background" aria-pressed="false"></button>
                   <button class="gradient-button gradient-dusk is-active" type="button" data-gradient="dusk" aria-label="Dusk gradient" aria-pressed="true"></button>
                   <button class="gradient-button gradient-tide" type="button" data-gradient="tide" aria-label="Tide gradient" aria-pressed="false"></button>
                   <button class="gradient-button gradient-mango" type="button" data-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
@@ -191,6 +192,7 @@
                 <span class="range-heading"><span>Padding</span><output id="framePaddingValue" for="framePadding">10%</output></span>
                 <input id="framePadding" type="range" min="0" max="24" step="1" value="10" />
               </label>
+              <p class="transparency-note">At 0%, rounded corners export transparent.</p>
 
               <label class="range-field presentation-range" for="cornerRadius">
                 <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
