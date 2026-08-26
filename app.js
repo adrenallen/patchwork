@@ -29,6 +29,7 @@
     undoButton: document.querySelector("#undoButton"),
     redoButton: document.querySelector("#redoButton"),
     clearSelectionButton: document.querySelector("#clearSelectionButton"),
+    copyButton: document.querySelector("#copyButton"),
     downloadButton: document.querySelector("#downloadButton"),
     selectionReadout: document.querySelector("#selectionReadout"),
     imageMeta: document.querySelector("#imageMeta"),
@@ -532,6 +533,7 @@
         canvas.hidden = false;
         canvas.tabIndex = 0;
         elements.editControls.setAttribute("aria-disabled", "false");
+        elements.copyButton.disabled = false;
         elements.downloadButton.disabled = false;
         elements.workspaceTip.textContent = "Drag a box · Enter applies";
         updateControls();
@@ -836,6 +838,29 @@
     }, "image/png");
   }
 
+  async function copyImage() {
+    if (!imageLoaded) return;
+    if (!navigator.clipboard?.write || typeof window.ClipboardItem === "undefined") {
+      showToast("Image copying is not supported here. Use Download PNG.");
+      return;
+    }
+
+    const outputCanvas = createExportCanvas();
+    const pngBlob = new Promise((resolve, reject) => {
+      outputCanvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("The PNG could not be created."));
+      }, "image/png");
+    });
+
+    try {
+      await navigator.clipboard.write([new window.ClipboardItem({ "image/png": pngBlob })]);
+      showToast("Image copied to clipboard.");
+    } catch {
+      showToast("Could not copy the image. Try Download PNG.");
+    }
+  }
+
   function handleDrop(event) {
     event.preventDefault();
     elements.canvasWrap.classList.remove("is-dragging");
@@ -967,6 +992,7 @@
   elements.clearSelectionButton.addEventListener("click", clearSelection);
   elements.undoButton.addEventListener("click", undo);
   elements.redoButton.addEventListener("click", redo);
+  elements.copyButton.addEventListener("click", copyImage);
   elements.downloadButton.addEventListener("click", downloadImage);
   elements.frameEnabled.addEventListener("change", () => {
     frameEnabled = elements.frameEnabled.checked;
