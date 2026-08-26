@@ -42,6 +42,7 @@
     ratioButtons: [...document.querySelectorAll(".ratio-button")],
     outputWidth: document.querySelector("#outputWidth"),
     outputHeight: document.querySelector("#outputHeight"),
+    matchImageRatio: document.querySelector("#matchImageRatio"),
     customSizeNote: document.querySelector("#customSizeNote"),
     gradientButtons: [...document.querySelectorAll(".gradient-button")],
     framePadding: document.querySelector("#framePadding"),
@@ -61,6 +62,7 @@
     aspectPreset: "patchwork.aspectPreset",
     outputWidth: "patchwork.outputWidth",
     outputHeight: "patchwork.outputHeight",
+    matchImageRatio: "patchwork.matchImageRatio",
     gradient: "patchwork.gradient",
     framePadding: "patchwork.framePadding",
     cornerRadius: "patchwork.cornerRadius",
@@ -82,6 +84,7 @@
   let pattern = "solid";
   let frameEnabled = false;
   let aspectPreset = "square";
+  let matchImageRatio = true;
   let gradientName = "dusk";
   let selection = null;
   let dragStart = null;
@@ -116,12 +119,15 @@
     setPattern(["solid", "diagonal", "hatch"].includes(savedPattern) ? savedPattern : "solid", false);
     frameEnabled = readPreference(STORAGE_KEYS.frameEnabled, "false") === "true";
     aspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "square");
+    matchImageRatio = readPreference(STORAGE_KEYS.matchImageRatio, "true") === "true";
+    if (matchImageRatio) aspectPreset = "source";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (!GRADIENTS[gradientName]) gradientName = "dusk";
     elements.frameEnabled.checked = frameEnabled;
-    elements.outputWidth.value = String(clampNumber(readPreference(STORAGE_KEYS.outputWidth, "1600"), 320, 4096, 1600));
-    elements.outputHeight.value = String(clampNumber(readPreference(STORAGE_KEYS.outputHeight, "1600"), 320, 4096, 1600));
-    elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 4, 24, 10));
+    elements.matchImageRatio.checked = matchImageRatio;
+    elements.outputWidth.value = String(clampNumber(readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
+    elements.outputHeight.value = String(clampNumber(readPreference(STORAGE_KEYS.outputHeight, "1600"), 1, 12000, 1600));
+    elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 24, 10));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
     updatePresentationUI();
     loadRecentPatches();
@@ -134,10 +140,15 @@
   }
 
   function getOutputDimensions() {
-    return {
-      width: clampNumber(elements.outputWidth.value, 320, 4096, 1600),
-      height: clampNumber(elements.outputHeight.value, 320, 4096, 1600),
-    };
+    let width = clampNumber(elements.outputWidth.value, 1, 12000, imageLoaded ? baseCanvas.width : 1600);
+    let height = clampNumber(elements.outputHeight.value, 1, 12000, imageLoaded ? baseCanvas.height : 1600);
+    const pixelLimit = 48_000_000;
+    if (width * height > pixelLimit) {
+      const scale = Math.sqrt(pixelLimit / (width * height));
+      width = Math.max(1, Math.floor(width * scale));
+      height = Math.max(1, Math.floor(height * scale));
+    }
+    return { width, height };
   }
 
   function gradientCss(name = gradientName) {
@@ -147,6 +158,7 @@
 
   function updatePresentationUI() {
     elements.frameEnabled.checked = frameEnabled;
+    elements.matchImageRatio.checked = matchImageRatio;
     elements.frameToggleLabel.textContent = frameEnabled ? "On" : "Off";
     elements.presentationControls.hidden = !frameEnabled;
     elements.framePaddingValue.value = `${elements.framePadding.value}%`;
@@ -164,35 +176,79 @@
     });
 
     const presetButton = elements.ratioButtons.find((button) => button.dataset.aspect === aspectPreset);
-    elements.customSizeNote.textContent = presetButton
-      ? `${presetButton.querySelector("strong").textContent} preset · pixels`
-      : "Custom size · pixels";
+    if (matchImageRatio) {
+      elements.customSizeNote.textContent = imageLoaded
+        ? `Matches ${baseCanvas.width} × ${baseCanvas.height} source ratio · pixels`
+        : "Waiting for an image · pixels";
+    } else {
+      elements.customSizeNote.textContent = presetButton
+        ? `${presetButton.querySelector("strong").textContent} preset · pixels`
+        : "Custom size · pixels";
+    }
     updateFramePreview();
   }
 
   function setAspectPreset(button) {
+    matchImageRatio = false;
     aspectPreset = button.dataset.aspect;
+    elements.matchImageRatio.checked = false;
     elements.outputWidth.value = button.dataset.width;
     elements.outputHeight.value = button.dataset.height;
+    savePreference(STORAGE_KEYS.matchImageRatio, "false");
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
     savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
     updatePresentationUI();
   }
 
-  function setCustomDimensions() {
-    const width = Number(elements.outputWidth.value);
-    const height = Number(elements.outputHeight.value);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
-    aspectPreset = "custom";
+  function syncOutputToSourceSize() {
+    if (!imageLoaded) return;
+    aspectPreset = "source";
+    elements.outputWidth.value = String(baseCanvas.width);
+    elements.outputHeight.value = String(baseCanvas.height);
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
-    savePreference(STORAGE_KEYS.outputWidth, String(width));
-    savePreference(STORAGE_KEYS.outputHeight, String(height));
+    savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
+    savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
+  }
+
+  function setCustomDimensions(changedInput) {
+    let width = Number(elements.outputWidth.value);
+    let height = Number(elements.outputHeight.value);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+
+    if (matchImageRatio && imageLoaded) {
+      const sourceRatio = baseCanvas.width / baseCanvas.height;
+      if (changedInput === elements.outputHeight) {
+        width = Math.max(1, Math.round(height * sourceRatio));
+        elements.outputWidth.value = String(width);
+      } else {
+        height = Math.max(1, Math.round(width / sourceRatio));
+        elements.outputHeight.value = String(height);
+      }
+      aspectPreset = "source";
+    } else {
+      aspectPreset = "custom";
+    }
+    savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
+    savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
+    savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
     updatePresentationUI();
   }
 
   function normalizeDimensionInputs() {
-    const dimensions = getOutputDimensions();
+    let dimensions = getOutputDimensions();
+    if (matchImageRatio && imageLoaded) {
+      const sourceRatio = baseCanvas.width / baseCanvas.height;
+      dimensions = {
+        width: dimensions.width,
+        height: Math.max(1, Math.round(dimensions.width / sourceRatio)),
+      };
+      if (dimensions.width * dimensions.height > 48_000_000) {
+        const scale = Math.sqrt(48_000_000 / (dimensions.width * dimensions.height));
+        dimensions.width = Math.max(1, Math.floor(dimensions.width * scale));
+        dimensions.height = Math.max(1, Math.floor(dimensions.height * scale));
+      }
+    }
     elements.outputWidth.value = String(dimensions.width);
     elements.outputHeight.value = String(dimensions.height);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
@@ -203,6 +259,19 @@
   function setGradient(name) {
     gradientName = GRADIENTS[name] ? name : "dusk";
     savePreference(STORAGE_KEYS.gradient, gradientName);
+    updatePresentationUI();
+  }
+
+  function setMatchImageRatio(enabled) {
+    matchImageRatio = enabled;
+    savePreference(STORAGE_KEYS.matchImageRatio, String(matchImageRatio));
+    if (matchImageRatio) {
+      aspectPreset = "source";
+      syncOutputToSourceSize();
+    } else {
+      aspectPreset = "custom";
+      savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
+    }
     updatePresentationUI();
   }
 
@@ -380,6 +449,8 @@
       elements.framePreview.style.removeProperty("height");
       elements.framePreview.style.removeProperty("padding");
       elements.framePreview.style.removeProperty("background");
+      canvas.style.removeProperty("width");
+      canvas.style.removeProperty("height");
       canvas.style.removeProperty("border-radius");
       updateImageMeta();
       window.requestAnimationFrame(render);
@@ -392,13 +463,20 @@
     const previewScale = Math.min(availableWidth / dimensions.width, availableHeight / dimensions.height);
     const previewWidth = Math.max(80, dimensions.width * previewScale);
     const previewHeight = Math.max(80, dimensions.height * previewScale);
-    const padding = Math.min(previewWidth, previewHeight) * (Number(elements.framePadding.value) / 100);
+    const paddingRatio = Number(elements.framePadding.value) / 100;
+    const horizontalPadding = previewWidth * paddingRatio;
+    const verticalPadding = previewHeight * paddingRatio;
+    const availableImageWidth = Math.max(1, previewWidth - horizontalPadding * 2);
+    const availableImageHeight = Math.max(1, previewHeight - verticalPadding * 2);
+    const imageScale = Math.min(availableImageWidth / baseCanvas.width, availableImageHeight / baseCanvas.height);
     const radius = Number(elements.cornerRadius.value) * previewScale;
 
     elements.framePreview.style.width = `${previewWidth}px`;
     elements.framePreview.style.height = `${previewHeight}px`;
-    elements.framePreview.style.padding = `${padding}px`;
+    elements.framePreview.style.padding = `${verticalPadding}px ${horizontalPadding}px`;
     elements.framePreview.style.background = gradientCss();
+    canvas.style.width = `${baseCanvas.width * imageScale}px`;
+    canvas.style.height = `${baseCanvas.height * imageScale}px`;
     canvas.style.borderRadius = `${radius}px`;
     updateImageMeta();
     window.requestAnimationFrame(render);
@@ -445,6 +523,7 @@
         imageLoaded = true;
         imageLabel = file.name || "Pasted image";
         imageName = (file.name || "pasted-image").replace(/\.[^.]+$/, "");
+        if (matchImageRatio) syncOutputToSourceSize();
         selection = null;
         history = [];
         future = [];
@@ -456,7 +535,7 @@
         elements.downloadButton.disabled = false;
         elements.workspaceTip.textContent = "Drag a box · Enter applies";
         updateControls();
-        updateFramePreview();
+        updatePresentationUI();
         render();
         canvas.focus({ preventScroll: true });
         showToast("Image ready. Drag a box to start.");
@@ -709,9 +788,11 @@
     outputContext.imageSmoothingQuality = "high";
     fillGradient(outputContext, output.width, output.height);
 
-    const padding = Math.min(output.width, output.height) * (Number(elements.framePadding.value) / 100);
-    const availableWidth = Math.max(1, output.width - padding * 2);
-    const availableHeight = Math.max(1, output.height - padding * 2);
+    const paddingRatio = Number(elements.framePadding.value) / 100;
+    const horizontalPadding = output.width * paddingRatio;
+    const verticalPadding = output.height * paddingRatio;
+    const availableWidth = Math.max(1, output.width - horizontalPadding * 2);
+    const availableHeight = Math.max(1, output.height - verticalPadding * 2);
     const scale = Math.min(availableWidth / baseCanvas.width, availableHeight / baseCanvas.height);
     const imageWidth = baseCanvas.width * scale;
     const imageHeight = baseCanvas.height * scale;
@@ -896,11 +977,14 @@
   elements.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setAspectPreset(button));
   });
+  elements.matchImageRatio.addEventListener("change", () => {
+    setMatchImageRatio(elements.matchImageRatio.checked);
+  });
   elements.gradientButtons.forEach((button) => {
     button.addEventListener("click", () => setGradient(button.dataset.gradient));
   });
   [elements.outputWidth, elements.outputHeight].forEach((input) => {
-    input.addEventListener("input", setCustomDimensions);
+    input.addEventListener("input", () => setCustomDimensions(input));
     input.addEventListener("blur", normalizeDimensionInputs);
     input.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;

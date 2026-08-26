@@ -150,11 +150,15 @@
               <fieldset class="control-group">
                 <legend>Output size</legend>
                 <div class="dimension-fields">
-                  <label for="outputWidth"><span>Width</span><input id="outputWidth" type="number" min="320" max="4096" step="1" value="1600" inputmode="numeric" /></label>
+                  <label for="outputWidth"><span>Width</span><input id="outputWidth" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
                   <span aria-hidden="true">×</span>
-                  <label for="outputHeight"><span>Height</span><input id="outputHeight" type="number" min="320" max="4096" step="1" value="1600" inputmode="numeric" /></label>
+                  <label for="outputHeight"><span>Height</span><input id="outputHeight" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
                 </div>
-                <p class="custom-size-note" id="customSizeNote">Square preset · pixels</p>
+                <label class="match-ratio-control" for="matchImageRatio">
+                  <input id="matchImageRatio" type="checkbox" checked />
+                  <span><strong>Match image ratio</strong><small>Starts at source size; 0% padding fills the canvas.</small></span>
+                </label>
+                <p class="custom-size-note" id="customSizeNote">Waiting for an image · pixels</p>
               </fieldset>
 
               <fieldset class="control-group">
@@ -171,7 +175,7 @@
 
               <label class="range-field presentation-range" for="framePadding">
                 <span class="range-heading"><span>Padding</span><output id="framePaddingValue" for="framePadding">10%</output></span>
-                <input id="framePadding" type="range" min="4" max="24" step="1" value="10" />
+                <input id="framePadding" type="range" min="0" max="24" step="1" value="10" />
               </label>
 
               <label class="range-field presentation-range" for="cornerRadius">
@@ -202,6 +206,7 @@
               Clear box
             </button>
           </section>
+          <footer class="version-footer">Patchwork <span>v1.0.0</span></footer>
         </aside>
 
         <section class="workspace" id="workspace" aria-label="Image workspace">
