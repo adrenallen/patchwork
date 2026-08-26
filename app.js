@@ -38,6 +38,9 @@
     recentList: document.querySelector("#recentList"),
     recentEmpty: document.querySelector("#recentEmpty"),
     clearRecentButton: document.querySelector("#clearRecentButton"),
+    recentImagesList: document.querySelector("#recentImagesList"),
+    recentImagesEmpty: document.querySelector("#recentImagesEmpty"),
+    clearRecentImagesButton: document.querySelector("#clearRecentImagesButton"),
     frameEnabled: document.querySelector("#frameEnabled"),
     frameToggleLabel: document.querySelector("#frameToggleLabel"),
     presentationControls: document.querySelector("#presentationControls"),
@@ -80,6 +83,11 @@
     graphite: { angle: 135, stops: ["#64748b", "#26354b", "#0f172a"] },
   };
 
+  const IMAGE_DB_NAME = "patchwork-image-history";
+  const IMAGE_DB_VERSION = 1;
+  const IMAGE_STORE_NAME = "images";
+  const MAX_SAVED_IMAGES = 7;
+
   let imageLoaded = false;
   let imageName = "image";
   let imageLabel = "Pasted image";
@@ -96,6 +104,14 @@
   let future = [];
   let isRestoring = false;
   let recentPatches = [];
+  let savedImages = [];
+  let currentImageId = null;
+  let imageDatabasePromise = null;
+  let imageSaveTimer = null;
+  let imageSaveQueue = Promise.resolve(true);
+  let recentImageUrls = [];
+  let isSwitchingImages = false;
+  let imageStorageWarningShown = false;
   let toastTimer = null;
 
   function readPreference(key, fallback) {
@@ -112,6 +128,214 @@
     } catch {
       // The editor still works when storage is unavailable.
     }
+  }
+
+  function createImageId() {
+    if (typeof window.crypto?.randomUUID === "function") return window.crypto.randomUUID();
+    return `image-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function openImageDatabase() {
+    if (imageDatabasePromise) return imageDatabasePromise;
+    if (!window.indexedDB) {
+      imageDatabasePromise = Promise.resolve(null);
+      return imageDatabasePromise;
+    }
+
+    imageDatabasePromise = new Promise((resolve) => {
+      let request;
+      try {
+        request = window.indexedDB.open(IMAGE_DB_NAME, IMAGE_DB_VERSION);
+      } catch {
+        resolve(null);
+        return;
+      }
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (database.objectStoreNames.contains(IMAGE_STORE_NAME)) return;
+        const store = database.createObjectStore(IMAGE_STORE_NAME, { keyPath: "id" });
+        store.createIndex("updatedAt", "updatedAt");
+      };
+      request.onsuccess = () => {
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      };
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    });
+    return imageDatabasePromise;
+  }
+
+  function transactionComplete(transaction) {
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Image storage failed."));
+      transaction.onabort = () => reject(transaction.error || new Error("Image storage was interrupted."));
+    });
+  }
+
+  async function readImageRecords() {
+    const database = await openImageDatabase();
+    if (!database) return [];
+
+    return new Promise((resolve) => {
+      const transaction = database.transaction(IMAGE_STORE_NAME, "readonly");
+      const request = transaction.objectStore(IMAGE_STORE_NAME).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => resolve([]);
+    });
+  }
+
+  async function storeImageRecord(record) {
+    const database = await openImageDatabase();
+    if (!database) throw new Error("Local image storage is unavailable.");
+
+    const transaction = database.transaction(IMAGE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(IMAGE_STORE_NAME);
+    store.put(record);
+    const allRecords = store.getAll();
+    allRecords.onsuccess = () => {
+      allRecords.result
+        .sort((left, right) => right.updatedAt - left.updatedAt)
+        .slice(MAX_SAVED_IMAGES)
+        .forEach((oldRecord) => store.delete(oldRecord.id));
+    };
+    await transactionComplete(transaction);
+  }
+
+  async function clearImageRecords() {
+    const database = await openImageDatabase();
+    if (!database) return;
+    const transaction = database.transaction(IMAGE_STORE_NAME, "readwrite");
+    transaction.objectStore(IMAGE_STORE_NAME).clear();
+    await transactionComplete(transaction);
+  }
+
+  function canvasBlob(sourceCanvas, type = "image/png", quality) {
+    return new Promise((resolve, reject) => {
+      sourceCanvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("The image could not be created."));
+      }, type, quality);
+    });
+  }
+
+  async function createThumbnailBlob() {
+    const maximumWidth = 260;
+    const maximumHeight = 150;
+    const scale = Math.min(maximumWidth / baseCanvas.width, maximumHeight / baseCanvas.height, 1);
+    const thumbnail = document.createElement("canvas");
+    thumbnail.width = Math.max(1, Math.round(baseCanvas.width * scale));
+    thumbnail.height = Math.max(1, Math.round(baseCanvas.height * scale));
+    const thumbnailContext = thumbnail.getContext("2d");
+    thumbnailContext.imageSmoothingEnabled = true;
+    thumbnailContext.imageSmoothingQuality = "high";
+    thumbnailContext.drawImage(baseCanvas, 0, 0, thumbnail.width, thumbnail.height);
+    return canvasBlob(thumbnail, "image/webp", 0.82);
+  }
+
+  function formatSavedTime(timestamp) {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(timestamp));
+  }
+
+  function renderRecentImages() {
+    recentImageUrls.forEach((url) => URL.revokeObjectURL(url));
+    recentImageUrls = [];
+    elements.recentImagesList.querySelectorAll(".recent-image").forEach((item) => item.remove());
+
+    const previousImages = savedImages
+      .filter((record) => record.id !== currentImageId)
+      .slice(0, MAX_SAVED_IMAGES);
+    elements.recentImagesEmpty.hidden = previousImages.length > 0;
+    elements.clearRecentImagesButton.hidden = previousImages.length === 0;
+
+    previousImages.forEach((record) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "recent-image";
+      button.disabled = isSwitchingImages;
+      button.setAttribute("aria-label", `Open saved image ${record.label || record.name}`);
+
+      const preview = document.createElement("img");
+      const previewUrl = URL.createObjectURL(record.thumbnailBlob || record.blob);
+      recentImageUrls.push(previewUrl);
+      preview.src = previewUrl;
+      preview.alt = "";
+
+      const copy = document.createElement("span");
+      copy.className = "recent-image-copy";
+      const title = document.createElement("strong");
+      title.textContent = record.label || record.name || "Saved image";
+      const detail = document.createElement("small");
+      detail.textContent = `${record.width} × ${record.height} · ${formatSavedTime(record.updatedAt)}`;
+      copy.append(title, detail);
+
+      button.append(preview, copy);
+      button.addEventListener("click", () => restoreSavedImage(record.id));
+      elements.recentImagesList.append(button);
+    });
+  }
+
+  async function loadSavedImages() {
+    try {
+      savedImages = (await readImageRecords()).sort((left, right) => right.updatedAt - left.updatedAt);
+    } catch {
+      savedImages = [];
+    }
+    renderRecentImages();
+  }
+
+  function warnAboutImageStorage() {
+    if (imageStorageWarningShown) return;
+    imageStorageWarningShown = true;
+    showToast("Image history could not be saved. Browser storage may be unavailable or full.");
+  }
+
+  function saveCurrentImage({ notifyFailure = false, refresh = true } = {}) {
+    window.clearTimeout(imageSaveTimer);
+    imageSaveTimer = null;
+    if (!imageLoaded || !currentImageId) return Promise.resolve(true);
+
+    const record = {
+      id: currentImageId,
+      name: imageName,
+      label: imageLabel,
+      width: baseCanvas.width,
+      height: baseCanvas.height,
+      updatedAt: Date.now(),
+    };
+    const blobs = Promise.all([canvasBlob(baseCanvas), createThumbnailBlob()]).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    const save = async () => {
+      try {
+        const blobResult = await blobs;
+        if (blobResult.error) throw blobResult.error;
+        const [blob, thumbnailBlob] = blobResult.value;
+        await storeImageRecord({ ...record, blob, thumbnailBlob });
+        if (refresh) await loadSavedImages();
+        return true;
+      } catch {
+        if (notifyFailure) warnAboutImageStorage();
+        return false;
+      }
+    };
+    imageSaveQueue = imageSaveQueue.then(save, save);
+    return imageSaveQueue;
+  }
+
+  function scheduleCurrentImageSave() {
+    window.clearTimeout(imageSaveTimer);
+    imageSaveTimer = window.setTimeout(() => {
+      imageSaveTimer = null;
+      saveCurrentImage();
+    }, 500);
   }
 
   function initializePreferences() {
@@ -532,6 +756,94 @@
     elements.fileInput.click();
   }
 
+  function imageDimensionsAreValid(image) {
+    const maxDimension = 12000;
+    const maxPixels = 48_000_000;
+    return (
+      image.naturalWidth <= maxDimension &&
+      image.naturalHeight <= maxDimension &&
+      image.naturalWidth * image.naturalHeight <= maxPixels
+    );
+  }
+
+  function activateImage(image, { id, label, name }) {
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    baseCanvas.width = image.naturalWidth;
+    baseCanvas.height = image.naturalHeight;
+    baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+    baseContext.drawImage(image, 0, 0);
+
+    imageLoaded = true;
+    currentImageId = id;
+    imageLabel = label || "Pasted image";
+    imageName = name || "pasted-image";
+    if (matchImageRatio) syncOutputToSourceSize();
+    selection = null;
+    history = [];
+    future = [];
+    elements.emptyState.hidden = true;
+    elements.framePreview.hidden = false;
+    canvas.hidden = false;
+    canvas.tabIndex = 0;
+    elements.editControls.setAttribute("aria-disabled", "false");
+    elements.copyButton.disabled = false;
+    elements.downloadButton.disabled = false;
+    elements.workspaceTip.textContent = "Drag a box · Enter applies";
+    updateControls();
+    updatePresentationUI();
+    render();
+    canvas.focus({ preventScroll: true });
+  }
+
+  function imageFromBlob(blob) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const url = URL.createObjectURL(blob);
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("The saved image could not be opened."));
+      };
+      image.src = url;
+    });
+  }
+
+  async function restoreSavedImage(id) {
+    if (isSwitchingImages || id === currentImageId) return;
+    const record = savedImages.find((item) => item.id === id);
+    if (!record) return;
+
+    isSwitchingImages = true;
+    renderRecentImages();
+    await saveCurrentImage({ notifyFailure: true, refresh: false });
+
+    try {
+      const image = await imageFromBlob(record.blob);
+      if (!imageDimensionsAreValid(image)) throw new Error("The saved image is too large.");
+      activateImage(image, {
+        id: record.id,
+        label: record.label,
+        name: record.name,
+      });
+      try {
+        await storeImageRecord({ ...record, updatedAt: Date.now() });
+        await loadSavedImages();
+      } catch {
+        await loadSavedImages();
+      }
+      showToast("Saved image reopened. Keep editing where you left off.");
+    } catch {
+      showToast("That saved image could not be reopened.");
+    } finally {
+      isSwitchingImages = false;
+      renderRecentImages();
+    }
+  }
+
   function loadImageFile(file) {
     if (!isImageFile(file)) {
       showToast("Choose a PNG, JPG, WebP, or GIF image.");
@@ -543,44 +855,20 @@
     reader.onload = () => {
       const image = new Image();
       image.onerror = () => showToast("That image format could not be opened.");
-      image.onload = () => {
-        const maxDimension = 12000;
-        const maxPixels = 48_000_000;
-        if (
-          image.naturalWidth > maxDimension ||
-          image.naturalHeight > maxDimension ||
-          image.naturalWidth * image.naturalHeight > maxPixels
-        ) {
+      image.onload = async () => {
+        if (!imageDimensionsAreValid(image)) {
           showToast("This image is too large. Use one under 48 megapixels.");
           return;
         }
 
-        canvas.width = image.naturalWidth;
-        canvas.height = image.naturalHeight;
-        baseCanvas.width = image.naturalWidth;
-        baseCanvas.height = image.naturalHeight;
-        baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
-        baseContext.drawImage(image, 0, 0);
-
-        imageLoaded = true;
-        imageLabel = file.name || "Pasted image";
-        imageName = (file.name || "pasted-image").replace(/\.[^.]+$/, "");
-        if (matchImageRatio) syncOutputToSourceSize();
-        selection = null;
-        history = [];
-        future = [];
-        elements.emptyState.hidden = true;
-        elements.framePreview.hidden = false;
-        canvas.hidden = false;
-        canvas.tabIndex = 0;
-        elements.editControls.setAttribute("aria-disabled", "false");
-        elements.copyButton.disabled = false;
-        elements.downloadButton.disabled = false;
-        elements.workspaceTip.textContent = "Drag a box · Enter applies";
-        updateControls();
-        updatePresentationUI();
-        render();
-        canvas.focus({ preventScroll: true });
+        await saveCurrentImage({ notifyFailure: true, refresh: false });
+        const label = file.name || "Pasted image";
+        activateImage(image, {
+          id: createImageId(),
+          label,
+          name: (file.name || "pasted-image").replace(/\.[^.]+$/, ""),
+        });
+        await saveCurrentImage({ notifyFailure: true });
         showToast("Image ready. Drag a box to start.");
       };
       image.src = reader.result;
@@ -742,6 +1030,7 @@
       isRestoring = false;
       updateControls();
       render();
+      scheduleCurrentImageSave();
     };
     image.onerror = () => {
       isRestoring = false;
@@ -761,6 +1050,7 @@
     selection = null;
     updateControls();
     render();
+    scheduleCurrentImageSave();
     showToast(mode === "mask" ? "Mask applied." : "Text placed.");
   }
 
@@ -1077,6 +1367,20 @@
     renderRecentPatches();
     showToast("Recent patches cleared.");
   });
+  elements.clearRecentImagesButton.addEventListener("click", async () => {
+    if (!window.confirm("Clear saved image history? The image open now will stay open.")) return;
+    window.clearTimeout(imageSaveTimer);
+    imageSaveTimer = null;
+    try {
+      await imageSaveQueue;
+      await clearImageRecords();
+      savedImages = [];
+      renderRecentImages();
+      showToast("Saved image history cleared.");
+    } catch {
+      showToast("Saved image history could not be cleared.");
+    }
+  });
 
   elements.backgroundColor.addEventListener("input", () => {
     updatePreferenceLabels();
@@ -1134,7 +1438,12 @@
     }
   });
 
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveCurrentImage();
+  });
+
   initializePreferences();
+  loadSavedImages();
   updateControls();
   const resizeObserver = new ResizeObserver(() => updateFramePreview());
   resizeObserver.observe(elements.canvasWrap);

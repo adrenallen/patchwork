@@ -876,6 +876,7 @@ input[type="range"] {
   margin: -2px 0 0;
 }
 
+.image-history-section,
 .recent-section {
   padding: 18px 0 15px;
   border-bottom: 1px solid var(--line);
@@ -895,6 +896,74 @@ input[type="range"] {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.recent-images-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.recent-images-list .recent-empty {
+  grid-column: 1 / -1;
+}
+
+.recent-image {
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.recent-image:hover,
+.recent-image:focus-visible {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px rgba(47, 111, 237, 0.12), 0 5px 12px rgba(20, 33, 61, 0.09);
+  transform: translateY(-1px);
+}
+
+.recent-image img {
+  display: block;
+  width: 100%;
+  height: 64px;
+  border-bottom: 1px solid var(--line);
+  background: #e7ebf1;
+  object-fit: contain;
+}
+
+.recent-image:disabled {
+  cursor: progress;
+  opacity: 0.62;
+}
+
+.recent-image-copy {
+  display: block;
+  min-width: 0;
+  padding: 7px 8px 8px;
+}
+
+.recent-image-copy strong,
+.recent-image-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-image-copy strong {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.recent-image-copy small {
+  margin-top: 3px;
+  color: var(--muted);
+  font: 8px var(--utility);
 }
 
 .recent-preset {
