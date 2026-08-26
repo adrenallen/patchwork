@@ -113,6 +113,74 @@
             </button>
           </section>
 
+          <section class="presentation-section" aria-label="Share canvas settings">
+            <div class="section-heading presentation-heading">
+              <span class="step-label">Share canvas</span>
+              <label class="switch-control" for="frameEnabled">
+                <span id="frameToggleLabel">Off</span>
+                <input id="frameEnabled" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"><span></span></span>
+              </label>
+            </div>
+            <p class="presentation-intro">Frame the finished image for social posts.</p>
+
+            <div class="presentation-controls" id="presentationControls" hidden>
+              <fieldset class="control-group">
+                <legend>Aspect preset</legend>
+                <div class="ratio-presets">
+                  <button class="ratio-button is-active" type="button" data-aspect="square" data-width="1600" data-height="1600" aria-pressed="true">
+                    <span class="ratio-shape ratio-square" aria-hidden="true"></span>
+                    <span><strong>Square</strong><small>1:1</small></span>
+                  </button>
+                  <button class="ratio-button" type="button" data-aspect="portrait" data-width="1080" data-height="1350" aria-pressed="false">
+                    <span class="ratio-shape ratio-portrait" aria-hidden="true"></span>
+                    <span><strong>Portrait</strong><small>4:5</small></span>
+                  </button>
+                  <button class="ratio-button" type="button" data-aspect="landscape" data-width="1600" data-height="900" aria-pressed="false">
+                    <span class="ratio-shape ratio-landscape" aria-hidden="true"></span>
+                    <span><strong>Landscape</strong><small>16:9</small></span>
+                  </button>
+                  <button class="ratio-button" type="button" data-aspect="story" data-width="1080" data-height="1920" aria-pressed="false">
+                    <span class="ratio-shape ratio-story" aria-hidden="true"></span>
+                    <span><strong>Story</strong><small>9:16</small></span>
+                  </button>
+                </div>
+              </fieldset>
+
+              <fieldset class="control-group">
+                <legend>Output size</legend>
+                <div class="dimension-fields">
+                  <label for="outputWidth"><span>Width</span><input id="outputWidth" type="number" min="320" max="4096" step="1" value="1600" inputmode="numeric" /></label>
+                  <span aria-hidden="true">×</span>
+                  <label for="outputHeight"><span>Height</span><input id="outputHeight" type="number" min="320" max="4096" step="1" value="1600" inputmode="numeric" /></label>
+                </div>
+                <p class="custom-size-note" id="customSizeNote">Square preset · pixels</p>
+              </fieldset>
+
+              <fieldset class="control-group">
+                <legend>Gradient</legend>
+                <div class="gradient-presets" role="group" aria-label="Gradient background">
+                  <button class="gradient-button gradient-dusk is-active" type="button" data-gradient="dusk" aria-label="Dusk gradient" aria-pressed="true"></button>
+                  <button class="gradient-button gradient-tide" type="button" data-gradient="tide" aria-label="Tide gradient" aria-pressed="false"></button>
+                  <button class="gradient-button gradient-mango" type="button" data-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
+                  <button class="gradient-button gradient-iris" type="button" data-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
+                  <button class="gradient-button gradient-mint" type="button" data-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
+                  <button class="gradient-button gradient-graphite" type="button" data-gradient="graphite" aria-label="Graphite gradient" aria-pressed="false"></button>
+                </div>
+              </fieldset>
+
+              <label class="range-field presentation-range" for="framePadding">
+                <span class="range-heading"><span>Padding</span><output id="framePaddingValue" for="framePadding">10%</output></span>
+                <input id="framePadding" type="range" min="4" max="24" step="1" value="10" />
+              </label>
+
+              <label class="range-field presentation-range" for="cornerRadius">
+                <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
+                <input id="cornerRadius" type="range" min="0" max="64" step="2" value="24" />
+              </label>
+            </div>
+          </section>
+
           <section class="recent-section" aria-label="Recent patch presets">
             <div class="section-heading recent-heading">
               <span class="step-label">Recent patches</span>
@@ -150,7 +218,9 @@
               <strong>Drop, paste, or choose an image</strong>
               <span>Then drag over anything you want to cover.</span>
             </button>
-            <canvas id="editorCanvas" aria-label="Image editor. Drag to select a rectangular area. Keyboard users can press Enter to create a box, use arrow keys to move it, and Shift plus arrow keys to resize it." hidden></canvas>
+            <div class="frame-preview" id="framePreview" hidden>
+              <canvas id="editorCanvas" aria-label="Image editor. Drag to select a rectangular area. Keyboard users can press Enter to create a box, use arrow keys to move it, and Shift plus arrow keys to resize it." hidden></canvas>
+            </div>
           </div>
         </section>
       </main>
