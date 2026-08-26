@@ -1006,6 +1006,41 @@ input[type="range"] {
   margin-bottom: 8px;
 }
 
+.collapsible-heading {
+  margin-bottom: 0;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapsible-heading::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-heading:hover .step-label {
+  color: var(--blue-dark);
+}
+
+.collapse-chevron {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+
+.image-history-section[open] .collapse-chevron {
+  transform: rotate(180deg);
+}
+
+.recent-images-body {
+  padding-top: 9px;
+}
+
+.recent-images-clear {
+  display: block;
+  margin: 0 0 7px auto;
+}
+
 .recent-list {
   display: grid;
   gap: 5px;

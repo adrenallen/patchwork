@@ -237,16 +237,6 @@
             </div>
           </section>
 
-          <section class="image-history-section" aria-label="Recent images">
-            <div class="section-heading recent-heading">
-              <span class="step-label">Recent images</span>
-              <button class="text-button" id="clearRecentImagesButton" type="button" hidden>Clear</button>
-            </div>
-            <div class="recent-images-list" id="recentImagesList">
-              <p class="recent-empty" id="recentImagesEmpty">Previous images stay on this device and appear here.</p>
-            </div>
-          </section>
-
           <section class="recent-section" aria-label="Recent tool presets">
             <div class="section-heading recent-heading">
               <span class="step-label">Recent tools</span>
@@ -256,6 +246,19 @@
               <p class="recent-empty" id="recentEmpty">Placed tools will appear here for quick reuse.</p>
             </div>
           </section>
+
+          <details class="image-history-section" aria-label="Recent images">
+            <summary class="section-heading recent-heading collapsible-heading">
+              <span class="step-label">Recent images</span>
+              <span class="collapse-chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="recent-images-body">
+              <button class="text-button recent-images-clear" id="clearRecentImagesButton" type="button" hidden>Clear</button>
+              <div class="recent-images-list" id="recentImagesList">
+                <p class="recent-empty" id="recentImagesEmpty">Previous images stay on this device and appear here.</p>
+              </div>
+            </div>
+          </details>
 
           <section class="history-section" aria-label="Edit history">
             <button class="icon-text-button" id="undoButton" type="button" disabled aria-label="Undo last edit">
