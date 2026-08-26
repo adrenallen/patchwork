@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#eef1f5" />
+    <title>Patchwork — quick image redaction</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%2314213d%22/><rect x=%2216%22 y=%2216%22 width=%228%22 height=%228%22 fill=%22%2378a3ff%22/></svg>" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">Skip to image workspace</a>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="Patchwork image redactor">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          <div>
+            <h1>Patchwork</h1>
+            <p>Fast cover-ups for screenshots</p>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <span class="privacy-note"><span aria-hidden="true"></span> Stays on this device</span>
+          <button class="button button-secondary" id="newImageButton" type="button">Open image</button>
+          <button class="button button-primary" id="downloadButton" type="button" disabled>Download PNG</button>
+        </div>
+      </header>
+
+      <main class="main-layout">
+        <aside class="tool-panel" aria-label="Editing controls">
+          <section class="tool-section source-section">
+            <div class="section-heading">
+              <span class="step-label">Image</span>
+              <button class="text-button" id="replaceImageButton" type="button">Replace</button>
+            </div>
+            <button class="paste-card" id="pasteCard" type="button">
+              <span class="paste-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M9 5h6m-7 3h8a2 2 0 0 1 2 2v9H6v-9a2 2 0 0 1 2-2Zm1-2V5a3 3 0 0 1 6 0v1" /></svg>
+              </span>
+              <span><strong>Paste an image</strong><small><kbd>⌘</kbd><kbd>V</kbd> or choose a file</small></span>
+            </button>
+            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+          </section>
+
+          <section class="tool-section edit-section" id="editControls" aria-disabled="true">
+            <div class="section-heading">
+              <span class="step-label">Patch</span>
+              <span class="selection-readout" id="selectionReadout">Draw a box</span>
+            </div>
+
+            <div class="segmented-control" role="group" aria-label="Patch type">
+              <button class="segment is-active" id="maskModeButton" type="button" aria-pressed="true">
+                <span class="mode-swatch" aria-hidden="true"></span> Mask
+              </button>
+              <button class="segment" id="textModeButton" type="button" aria-pressed="false">
+                <span class="text-glyph" aria-hidden="true">Aa</span> Replace text
+              </button>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="backgroundColor">Background</label>
+              <div class="color-control">
+                <input id="backgroundColor" type="color" value="#111827" />
+                <output id="backgroundColorValue" for="backgroundColor">#111827</output>
+              </div>
+            </div>
+
+            <div class="pattern-field">
+              <span class="field-label" id="patternLabel">Fill style</span>
+              <div class="pattern-control" role="group" aria-labelledby="patternLabel">
+                <button class="pattern-button is-active" type="button" data-patch-pattern="solid" aria-pressed="true">
+                  <span class="pattern-sample pattern-solid" aria-hidden="true"></span>
+                  <span>Solid</span>
+                </button>
+                <button class="pattern-button" type="button" data-patch-pattern="diagonal" aria-pressed="false">
+                  <span class="pattern-sample pattern-diagonal" aria-hidden="true"></span>
+                  <span>Diagonal</span>
+                </button>
+                <button class="pattern-button" type="button" data-patch-pattern="hatch" aria-pressed="false">
+                  <span class="pattern-sample pattern-hatch" aria-hidden="true"></span>
+                  <span>Hatch</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="text-options" id="textOptions" hidden>
+              <label class="stacked-field" for="replacementText">
+                <span>Replacement text</span>
+                <input id="replacementText" type="text" placeholder="e.g. Jordan Lee…" autocomplete="off" />
+              </label>
+
+              <div class="field-row">
+                <label class="field-label" for="textColor">Text color</label>
+                <div class="color-control">
+                  <input id="textColor" type="color" value="#ffffff" />
+                  <output id="textColorValue" for="textColor">#FFFFFF</output>
+                </div>
+              </div>
+
+              <label class="range-field" for="fontSize">
+                <span class="range-heading"><span>Font size</span><output id="fontSizeValue" for="fontSize">28 px</output></span>
+                <input id="fontSize" type="range" min="8" max="160" step="1" value="28" />
+              </label>
+            </div>
+
+            <button class="apply-button" id="applyButton" type="button" disabled>
+              <span id="applyButtonLabel">Apply mask</span>
+              <span aria-hidden="true">↵</span>
+            </button>
+          </section>
+
+          <section class="recent-section" aria-label="Recent patch presets">
+            <div class="section-heading recent-heading">
+              <span class="step-label">Recent patches</span>
+              <button class="text-button" id="clearRecentButton" type="button" hidden>Clear</button>
+            </div>
+            <div class="recent-list" id="recentList">
+              <p class="recent-empty" id="recentEmpty">Placed patches will appear here for quick reuse.</p>
+            </div>
+          </section>
+
+          <section class="history-section" aria-label="Edit history">
+            <button class="icon-text-button" id="undoButton" type="button" disabled aria-label="Undo last edit">
+              <span aria-hidden="true">↶</span> Undo
+            </button>
+            <button class="icon-text-button" id="redoButton" type="button" disabled aria-label="Redo last edit">
+              <span aria-hidden="true">↷</span> Redo
+            </button>
+            <button class="icon-text-button" id="clearSelectionButton" type="button" disabled>
+              Clear box
+            </button>
+          </section>
+        </aside>
+
+        <section class="workspace" id="workspace" aria-label="Image workspace">
+          <div class="workspace-bar">
+            <p id="imageMeta">No image loaded</p>
+            <p class="workspace-tip" id="workspaceTip">Paste anywhere to begin</p>
+          </div>
+
+          <div class="canvas-wrap" id="canvasWrap">
+            <button class="empty-state" id="emptyState" type="button">
+              <span class="empty-visual" aria-hidden="true">
+                <span class="selection-box"><i></i><i></i><i></i><i></i></span>
+              </span>
+              <strong>Drop, paste, or choose an image</strong>
+              <span>Then drag over anything you want to cover.</span>
+            </button>
+            <canvas id="editorCanvas" aria-label="Image editor. Drag to select a rectangular area. Keyboard users can press Enter to create a box, use arrow keys to move it, and Shift plus arrow keys to resize it." hidden></canvas>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
