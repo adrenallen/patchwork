@@ -102,6 +102,15 @@
                 </div>
               </div>
 
+              <div class="text-style-field">
+                <span class="field-label" id="textStyleLabel">Text style</span>
+                <div class="segmented-control text-style-control" role="group" aria-labelledby="textStyleLabel">
+                  <button class="segment text-style-button" type="button" data-text-style="normal" aria-pressed="false">Normal</button>
+                  <button class="segment text-style-button is-active" type="button" data-text-style="bold" aria-pressed="true">Bold</button>
+                  <button class="segment text-style-button" type="button" data-text-style="italic" aria-pressed="false">Italic</button>
+                </div>
+              </div>
+
               <label class="range-field font-size-field" for="fontSize">
                 <span class="range-heading"><span>Font size</span><output id="fontSizeValue" for="fontSize">28 px</output></span>
                 <input id="fontSize" type="range" min="8" max="160" step="1" value="28" />

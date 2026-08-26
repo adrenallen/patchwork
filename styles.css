@@ -510,6 +510,37 @@ input[type="color"]::-webkit-color-swatch {
   padding-top: 3px;
 }
 
+.text-style-field {
+  display: grid;
+  gap: 8px;
+  margin: 3px 0 15px;
+}
+
+.text-style-control {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+.text-style-button {
+  min-height: 32px;
+  font-size: 11px;
+}
+
+.text-style-button[data-text-style="normal"] {
+  font-style: normal;
+  font-weight: 400;
+}
+
+.text-style-button[data-text-style="bold"] {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.text-style-button[data-text-style="italic"] {
+  font-style: italic;
+  font-weight: 400;
+}
+
 .stacked-field {
   display: grid;
   gap: 8px;

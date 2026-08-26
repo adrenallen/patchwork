@@ -22,6 +22,7 @@
     replacementText: document.querySelector("#replacementText"),
     textColor: document.querySelector("#textColor"),
     textColorValue: document.querySelector("#textColorValue"),
+    textStyleButtons: [...document.querySelectorAll(".text-style-button")],
     fontSize: document.querySelector("#fontSize"),
     fontSizeValue: document.querySelector("#fontSizeValue"),
     autoTextSize: document.querySelector("#autoTextSize"),
@@ -60,6 +61,7 @@
   const STORAGE_KEYS = {
     backgroundColor: "patchwork.backgroundColor",
     textColor: "patchwork.textColor",
+    textStyle: "patchwork.textStyle",
     fontSize: "patchwork.fontSize",
     autoTextSize: "patchwork.autoTextSize",
     pattern: "patchwork.pattern",
@@ -93,6 +95,7 @@
   let imageLabel = "Pasted image";
   let mode = "mask";
   let pattern = "solid";
+  let textStyle = "bold";
   let frameEnabled = false;
   let aspectPreset = "square";
   let matchImageRatio = true;
@@ -343,6 +346,8 @@
     elements.textColor.value = readPreference(STORAGE_KEYS.textColor, "#ffffff");
     elements.fontSize.value = readPreference(STORAGE_KEYS.fontSize, "28");
     elements.autoTextSize.checked = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
+    const savedTextStyle = readPreference(STORAGE_KEYS.textStyle, "bold");
+    setTextStyle(["normal", "bold", "italic"].includes(savedTextStyle) ? savedTextStyle : "bold", false);
     const savedPattern = readPreference(STORAGE_KEYS.pattern, "solid");
     setPattern(["solid", "diagonal", "hatch"].includes(savedPattern) ? savedPattern : "solid", false);
     frameEnabled = readPreference(STORAGE_KEYS.frameEnabled, "false") === "true";
@@ -518,6 +523,24 @@
     return getComputedStyle(document.documentElement).getPropertyValue("--body");
   }
 
+  function canvasFont(size) {
+    const weight = textStyle === "bold" ? 700 : 400;
+    const italic = textStyle === "italic" ? "italic " : "";
+    return `${italic}${weight} ${size}px ${fontFamily()}`;
+  }
+
+  function setTextStyle(nextStyle, remember = true) {
+    textStyle = ["normal", "bold", "italic"].includes(nextStyle) ? nextStyle : "bold";
+    elements.textStyleButtons.forEach((button) => {
+      const isActive = button.dataset.textStyle === textStyle;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    if (remember) savePreference(STORAGE_KEYS.textStyle, textStyle);
+    updateFontSizeUI();
+    render();
+  }
+
   function effectiveFontSize(targetContext = context) {
     const manualSize = Number(elements.fontSize.value);
     if (!elements.autoTextSize.checked || !selection) return manualSize;
@@ -529,7 +552,7 @@
     for (let pass = 0; pass < 2; pass += 1) {
       const padding = Math.max(4, Math.min(size * 0.42, selection.width * 0.08));
       const availableWidth = Math.max(1, selection.width - padding * 2);
-      targetContext.font = `600 ${size}px ${fontFamily()}`;
+      targetContext.font = canvasFont(size);
       const measuredWidth = targetContext.measureText(text).width;
       if (measuredWidth <= availableWidth) break;
       size *= availableWidth / measuredWidth;
@@ -577,6 +600,7 @@
               ...preset,
               pattern: ["solid", "diagonal", "hatch"].includes(preset.pattern) ? preset.pattern : "solid",
               autoTextSize: preset.autoTextSize === true,
+              textStyle: ["normal", "bold", "italic"].includes(preset.textStyle) ? preset.textStyle : "bold",
             }))
             .slice(0, 6)
         : [];
@@ -593,6 +617,7 @@
       backgroundColor: elements.backgroundColor.value,
       text: mode === "text" ? elements.replacementText.value.trim() : "",
       textColor: elements.textColor.value,
+      textStyle,
       fontSize: Number(elements.fontSize.value),
       autoTextSize: elements.autoTextSize.checked,
     };
@@ -608,6 +633,7 @@
       preset.backgroundColor,
       preset.text,
       preset.textColor,
+      preset.textStyle,
       preset.fontSize,
       preset.autoTextSize,
     ]);
@@ -643,6 +669,10 @@
       swatch.style.setProperty("--sample-line", getPatternLineColor(preset.backgroundColor || "#111827", 0.32));
       swatch.style.setProperty("--sample-text", preset.textColor || "#ffffff");
       swatch.textContent = preset.mode === "text" ? "Aa" : "";
+      if (preset.mode === "text") {
+        swatch.style.fontStyle = preset.textStyle === "italic" ? "italic" : "normal";
+        swatch.style.fontWeight = preset.textStyle === "bold" ? "700" : "400";
+      }
       swatch.setAttribute("aria-hidden", "true");
 
       const copy = document.createElement("span");
@@ -651,7 +681,7 @@
       title.textContent = preset.mode === "text" ? preset.text || "Text patch" : `${capitalize(preset.pattern || "solid")} mask`;
       const detail = document.createElement("small");
       detail.textContent = preset.mode === "text"
-        ? `${preset.autoTextSize ? "Auto size" : `${preset.fontSize || 28} px`} · ${capitalize(preset.pattern || "solid")}`
+        ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
         : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
       copy.append(title, detail);
 
@@ -677,6 +707,7 @@
     savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
     savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
     updatePreferenceLabels();
+    setTextStyle(preset.textStyle || "bold");
     setPattern(preset.pattern || "solid");
     setMode(preset.mode || "mask");
     if (selection && preset.mode !== "text") canvas.focus({ preventScroll: true });
@@ -910,7 +941,7 @@
       targetContext.rect(selection.x, selection.y, selection.width, selection.height);
       targetContext.clip();
       targetContext.fillStyle = elements.textColor.value;
-      targetContext.font = `600 ${fontSize}px ${fontFamily()}`;
+      targetContext.font = canvasFont(fontSize);
       targetContext.textAlign = "left";
       targetContext.textBaseline = "middle";
       targetContext.fillText(
@@ -1391,6 +1422,9 @@
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
     render();
+  });
+  elements.textStyleButtons.forEach((button) => {
+    button.addEventListener("click", () => setTextStyle(button.dataset.textStyle));
   });
   elements.fontSize.addEventListener("input", () => {
     updatePreferenceLabels();
