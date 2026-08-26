@@ -24,6 +24,7 @@
     textColorValue: document.querySelector("#textColorValue"),
     fontSize: document.querySelector("#fontSize"),
     fontSizeValue: document.querySelector("#fontSizeValue"),
+    autoTextSize: document.querySelector("#autoTextSize"),
     applyButton: document.querySelector("#applyButton"),
     applyButtonLabel: document.querySelector("#applyButtonLabel"),
     undoButton: document.querySelector("#undoButton"),
@@ -57,6 +58,7 @@
     backgroundColor: "patchwork.backgroundColor",
     textColor: "patchwork.textColor",
     fontSize: "patchwork.fontSize",
+    autoTextSize: "patchwork.autoTextSize",
     pattern: "patchwork.pattern",
     recentPatches: "patchwork.recentPatches",
     frameEnabled: "patchwork.frameEnabled",
@@ -116,6 +118,7 @@
     elements.backgroundColor.value = readPreference(STORAGE_KEYS.backgroundColor, "#111827");
     elements.textColor.value = readPreference(STORAGE_KEYS.textColor, "#ffffff");
     elements.fontSize.value = readPreference(STORAGE_KEYS.fontSize, "28");
+    elements.autoTextSize.checked = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
     const savedPattern = readPreference(STORAGE_KEYS.pattern, "solid");
     setPattern(["solid", "diagonal", "hatch"].includes(savedPattern) ? savedPattern : "solid", false);
     frameEnabled = readPreference(STORAGE_KEYS.frameEnabled, "false") === "true";
@@ -279,12 +282,45 @@
   function updatePreferenceLabels() {
     elements.backgroundColorValue.value = elements.backgroundColor.value.toUpperCase();
     elements.textColorValue.value = elements.textColor.value.toUpperCase();
-    elements.fontSizeValue.value = `${elements.fontSize.value} px`;
+    updateFontSizeUI();
     const lineColor = getPatternLineColor(elements.backgroundColor.value, 0.32);
     elements.patternButtons.forEach((button) => {
       button.style.setProperty("--sample-color", elements.backgroundColor.value);
       button.style.setProperty("--sample-line", lineColor);
     });
+  }
+
+  function fontFamily() {
+    return getComputedStyle(document.documentElement).getPropertyValue("--body");
+  }
+
+  function effectiveFontSize(targetContext = context) {
+    const manualSize = Number(elements.fontSize.value);
+    if (!elements.autoTextSize.checked || !selection) return manualSize;
+
+    const text = elements.replacementText.value.trim();
+    let size = Math.max(1, selection.height * 0.62);
+    if (!text) return size;
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      const padding = Math.max(4, Math.min(size * 0.42, selection.width * 0.08));
+      const availableWidth = Math.max(1, selection.width - padding * 2);
+      targetContext.font = `600 ${size}px ${fontFamily()}`;
+      const measuredWidth = targetContext.measureText(text).width;
+      if (measuredWidth <= availableWidth) break;
+      size *= availableWidth / measuredWidth;
+    }
+    return Math.max(1, size);
+  }
+
+  function updateFontSizeUI() {
+    const isAuto = elements.autoTextSize.checked;
+    elements.fontSize.disabled = isAuto;
+    elements.fontSizeValue.value = isAuto
+      ? selection
+        ? `${Math.round(effectiveFontSize())} px auto`
+        : "Auto"
+      : `${elements.fontSize.value} px`;
   }
 
   function getPatternLineColor(hexColor, opacity = 0.24) {
@@ -316,6 +352,7 @@
             .map((preset) => ({
               ...preset,
               pattern: ["solid", "diagonal", "hatch"].includes(preset.pattern) ? preset.pattern : "solid",
+              autoTextSize: preset.autoTextSize === true,
             }))
             .slice(0, 6)
         : [];
@@ -333,6 +370,7 @@
       text: mode === "text" ? elements.replacementText.value.trim() : "",
       textColor: elements.textColor.value,
       fontSize: Number(elements.fontSize.value),
+      autoTextSize: elements.autoTextSize.checked,
     };
   }
 
@@ -347,6 +385,7 @@
       preset.text,
       preset.textColor,
       preset.fontSize,
+      preset.autoTextSize,
     ]);
   }
 
@@ -388,7 +427,7 @@
       title.textContent = preset.mode === "text" ? preset.text || "Text patch" : `${capitalize(preset.pattern || "solid")} mask`;
       const detail = document.createElement("small");
       detail.textContent = preset.mode === "text"
-        ? `${preset.fontSize || 28} px · ${capitalize(preset.pattern || "solid")}`
+        ? `${preset.autoTextSize ? "Auto size" : `${preset.fontSize || 28} px`} · ${capitalize(preset.pattern || "solid")}`
         : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
       copy.append(title, detail);
 
@@ -407,10 +446,12 @@
     elements.backgroundColor.value = preset.backgroundColor || "#111827";
     elements.textColor.value = preset.textColor || "#ffffff";
     elements.fontSize.value = String(preset.fontSize || 28);
+    elements.autoTextSize.checked = preset.autoTextSize === true;
     elements.replacementText.value = preset.text || "";
     savePreference(STORAGE_KEYS.backgroundColor, elements.backgroundColor.value);
     savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
     savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
+    savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
     updatePreferenceLabels();
     setPattern(preset.pattern || "solid");
     setMode(preset.mode || "mask");
@@ -575,13 +616,13 @@
     drawPattern(targetContext);
 
     if (mode === "text" && elements.replacementText.value.trim()) {
-      const fontSize = Number(elements.fontSize.value);
+      const fontSize = effectiveFontSize(targetContext);
       const horizontalPadding = Math.max(4, Math.min(fontSize * 0.42, selection.width * 0.08));
       targetContext.beginPath();
       targetContext.rect(selection.x, selection.y, selection.width, selection.height);
       targetContext.clip();
       targetContext.fillStyle = elements.textColor.value;
-      targetContext.font = `600 ${fontSize}px ${getComputedStyle(document.documentElement).getPropertyValue("--body")}`;
+      targetContext.font = `600 ${fontSize}px ${fontFamily()}`;
       targetContext.textAlign = "left";
       targetContext.textBaseline = "middle";
       targetContext.fillText(
@@ -664,6 +705,7 @@
     elements.undoButton.disabled = history.length === 0 || isRestoring;
     elements.redoButton.disabled = future.length === 0 || isRestoring;
     elements.applyButtonLabel.textContent = mode === "mask" ? "Apply mask" : "Place text";
+    updateFontSizeUI();
 
     if (hasSelection) {
       elements.selectionReadout.textContent = `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
@@ -1051,7 +1093,15 @@
     savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
     render();
   });
-  elements.replacementText.addEventListener("input", render);
+  elements.autoTextSize.addEventListener("change", () => {
+    savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
+    updateFontSizeUI();
+    render();
+  });
+  elements.replacementText.addEventListener("input", () => {
+    updateFontSizeUI();
+    render();
+  });
   elements.replacementText.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();

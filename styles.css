@@ -548,6 +548,15 @@ input[type="color"]::-webkit-color-swatch {
   font-variant-numeric: tabular-nums;
 }
 
+.font-size-field {
+  margin-bottom: 11px;
+}
+
+.font-size-field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 input[type="range"] {
   width: 100%;
   accent-color: var(--blue);
@@ -802,6 +811,14 @@ input[type="range"] {
   color: var(--muted);
   font-size: 9px;
   line-height: 1.35;
+}
+
+.auto-text-size-control {
+  margin: 0 0 18px;
+}
+
+.auto-text-size-control strong {
+  font-size: 11px;
 }
 
 .custom-size-note {

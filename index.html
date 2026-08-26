@@ -102,9 +102,13 @@
                 </div>
               </div>
 
-              <label class="range-field" for="fontSize">
+              <label class="range-field font-size-field" for="fontSize">
                 <span class="range-heading"><span>Font size</span><output id="fontSizeValue" for="fontSize">28 px</output></span>
                 <input id="fontSize" type="range" min="8" max="160" step="1" value="28" />
+              </label>
+              <label class="match-ratio-control auto-text-size-control" for="autoTextSize">
+                <input id="autoTextSize" type="checkbox" checked />
+                <span><strong>Auto size with patch</strong><small>Fits text to the box height and width.</small></span>
               </label>
             </div>
 
