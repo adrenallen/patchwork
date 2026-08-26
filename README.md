@@ -22,14 +22,6 @@ Patchwork is a fast, local image redaction tool for screenshots. Paste, drop, or
 - Preferences and recent presets saved locally in the browser
 - No uploads or server-side image processing
 
-## Run locally
+## Use
 
-There is no build step or dependency installation.
-
-```sh
-python3 -m http.server 4173
-```
-
-Then open `http://localhost:4173`.
-
-You can also open `index.html` directly in a modern browser.
+Download the files and open `index.html` in a browser. No dependencies are required.
