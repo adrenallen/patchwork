@@ -1,7 +1,5 @@
 # Patchwork
 
-Current release: **v1.0.0**
-
 Patchwork is a fast, local image redaction tool for screenshots. Paste, drop, or open an image; drag a box; then cover it with a solid or patterned mask, or replace it with styled placeholder text.
 
 ## Preview
