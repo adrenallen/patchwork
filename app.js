@@ -6,7 +6,6 @@
 
   const elements = {
     fileInput: document.querySelector("#fileInput"),
-    newImageButton: document.querySelector("#newImageButton"),
     replaceImageButton: document.querySelector("#replaceImageButton"),
     pasteCard: document.querySelector("#pasteCard"),
     emptyState: document.querySelector("#emptyState"),
@@ -89,6 +88,7 @@
   const IMAGE_DB_VERSION = 1;
   const IMAGE_STORE_NAME = "images";
   const MAX_SAVED_IMAGES = 7;
+  const MAX_RECENT_PATCHES = 10;
 
   let imageLoaded = false;
   let imageName = "image";
@@ -598,17 +598,30 @@
   function loadRecentPatches() {
     try {
       const saved = JSON.parse(readPreference(STORAGE_KEYS.recentPatches, "[]"));
-      recentPatches = Array.isArray(saved)
+      const normalizedPatches = Array.isArray(saved)
         ? saved
             .filter((preset) => preset && ["mask", "text"].includes(preset.mode))
             .map((preset) => ({
-              ...preset,
+              mode: preset.mode,
               pattern: ["solid", "diagonal", "hatch"].includes(preset.pattern) ? preset.pattern : "solid",
+              backgroundColor: preset.backgroundColor || "#111827",
+              text: preset.mode === "text" ? String(preset.text || "").trim() : "",
+              textColor: preset.textColor || "#ffffff",
+              fontSize: Number(preset.fontSize) || 28,
               autoTextSize: preset.autoTextSize === true,
               textStyle: ["normal", "bold", "italic"].includes(preset.textStyle) ? preset.textStyle : "bold",
             }))
-            .slice(0, 6)
         : [];
+      const seen = new Set();
+      recentPatches = normalizedPatches
+        .filter((preset) => {
+          const key = presetKey(preset);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, MAX_RECENT_PATCHES);
+      savePreference(STORAGE_KEYS.recentPatches, JSON.stringify(recentPatches));
     } catch {
       recentPatches = [];
     }
@@ -644,12 +657,15 @@
     ]);
   }
 
-  function rememberCurrentPreset() {
-    const preset = currentPreset();
+  function rememberPreset(preset) {
     const key = presetKey(preset);
-    recentPatches = [preset, ...recentPatches.filter((item) => presetKey(item) !== key)].slice(0, 6);
+    recentPatches = [preset, ...recentPatches.filter((item) => presetKey(item) !== key)].slice(0, MAX_RECENT_PATCHES);
     savePreference(STORAGE_KEYS.recentPatches, JSON.stringify(recentPatches));
     renderRecentPatches();
+  }
+
+  function rememberCurrentPreset() {
+    rememberPreset(currentPreset());
   }
 
   function capitalize(value) {
@@ -702,6 +718,7 @@
   }
 
   function reusePreset(preset) {
+    rememberPreset(preset);
     elements.backgroundColor.value = preset.backgroundColor || "#111827";
     elements.textColor.value = preset.textColor || "#ffffff";
     elements.fontSize.value = String(preset.fontSize || 28);
@@ -1247,7 +1264,7 @@
     else showToast("Drop an image file here.");
   }
 
-  [elements.newImageButton, elements.replaceImageButton, elements.pasteCard, elements.emptyState].forEach((button) => {
+  [elements.replaceImageButton, elements.pasteCard, elements.emptyState].forEach((button) => {
     button.addEventListener("click", chooseFile);
   });
 

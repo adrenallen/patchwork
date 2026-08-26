@@ -11,7 +11,7 @@ Patchwork is a fast, local image redaction tool for screenshots. Paste, drop, or
 - Paste, drag/drop, or upload PNG, JPG, WebP, and GIF images
 - Solid, diagonal, and crosshatch fills
 - Replacement text with custom background, text color, and font size
-- Recent patch presets for quickly reusing names and styles
+- Ten recent patch presets, with reused settings promoted to the top
 - Optional gradient or transparent presentation canvas with six curated backgrounds
 - Square, portrait, landscape, and story presets plus custom pixel dimensions
 - Source-size output and optional image-ratio locking for edge-to-edge framing
