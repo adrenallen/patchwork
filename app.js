@@ -27,6 +27,9 @@
     annotationSize: document.querySelector("#annotationSize"),
     annotationSizeValue: document.querySelector("#annotationSizeValue"),
     annotationStyleButtons: [...document.querySelectorAll(".annotation-style-button")],
+    annotationRoughnessField: document.querySelector("#annotationRoughnessField"),
+    annotationRoughness: document.querySelector("#annotationRoughness"),
+    annotationRoughnessValue: document.querySelector("#annotationRoughnessValue"),
     annotationNote: document.querySelector("#annotationNote"),
     backgroundColor: document.querySelector("#backgroundColor"),
     backgroundColorValue: document.querySelector("#backgroundColorValue"),
@@ -85,6 +88,7 @@
     annotationColor: "patchwork.annotationColor",
     annotationSize: "patchwork.annotationSize",
     annotationStyle: "patchwork.annotationStyle",
+    annotationRoughness: "patchwork.annotationRoughness",
     pattern: "patchwork.pattern",
     recentPatches: "patchwork.recentPatches",
     frameEnabled: "patchwork.frameEnabled",
@@ -113,6 +117,7 @@
   const MAX_RECENT_PATCHES = 10;
   const MIN_VIEW_ZOOM = 0.5;
   const MAX_VIEW_ZOOM = 4;
+  const ROUGHNESS_LABELS = ["", "Neat", "Natural", "Loose", "Messy", "Scribbly"];
 
   let imageLoaded = false;
   let imageName = "image";
@@ -121,6 +126,7 @@
   let pattern = "solid";
   let textStyle = "bold";
   let annotationStyle = "clean";
+  let annotationRoughness = 3;
   let frameEnabled = false;
   let aspectPreset = "square";
   let matchImageRatio = true;
@@ -398,6 +404,7 @@
     elements.autoTextSize.checked = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
     elements.annotationColor.value = readPreference(STORAGE_KEYS.annotationColor, "#ef4444");
     elements.annotationSize.value = String(clampNumber(readPreference(STORAGE_KEYS.annotationSize, "6"), 2, 28, 6));
+    setAnnotationRoughness(readPreference(STORAGE_KEYS.annotationRoughness, "3"), false);
     const savedAnnotationStyle = readPreference(STORAGE_KEYS.annotationStyle, "clean");
     setAnnotationStyle(["clean", "hand"].includes(savedAnnotationStyle) ? savedAnnotationStyle : "clean", false);
     const savedTextStyle = readPreference(STORAGE_KEYS.textStyle, "bold");
@@ -610,7 +617,21 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
+    elements.annotationRoughnessField.hidden = annotationStyle !== "hand";
     if (remember) savePreference(STORAGE_KEYS.annotationStyle, annotationStyle);
+    syncActiveObjectFromControls();
+    render();
+  }
+
+  function roughnessLabel(value = annotationRoughness) {
+    return ROUGHNESS_LABELS[clampNumber(value, 1, 5, 3)];
+  }
+
+  function setAnnotationRoughness(nextRoughness, remember = true) {
+    annotationRoughness = clampNumber(nextRoughness, 1, 5, 3);
+    elements.annotationRoughness.value = String(annotationRoughness);
+    elements.annotationRoughnessValue.value = roughnessLabel();
+    if (remember) savePreference(STORAGE_KEYS.annotationRoughness, String(annotationRoughness));
     syncActiveObjectFromControls();
     render();
   }
@@ -683,6 +704,7 @@
               annotationColor: preset.annotationColor || "#ef4444",
               annotationSize: clampNumber(preset.annotationSize, 2, 28, 6),
               annotationStyle: ["clean", "hand"].includes(preset.annotationStyle) ? preset.annotationStyle : "clean",
+              annotationRoughness: clampNumber(preset.annotationRoughness, 1, 5, 3),
             }))
         : [];
       const seen = new Set();
@@ -714,6 +736,7 @@
       annotationColor: elements.annotationColor.value,
       annotationSize: Number(elements.annotationSize.value),
       annotationStyle,
+      annotationRoughness,
     };
   }
 
@@ -722,7 +745,13 @@
       return JSON.stringify([preset.mode, preset.pattern, preset.backgroundColor]);
     }
     if (["circle", "arrow", "line"].includes(preset.mode)) {
-      return JSON.stringify([preset.mode, preset.annotationColor, preset.annotationSize, preset.annotationStyle]);
+      return JSON.stringify([
+        preset.mode,
+        preset.annotationColor,
+        preset.annotationSize,
+        preset.annotationStyle,
+        preset.annotationStyle === "hand" ? preset.annotationRoughness : null,
+      ]);
     }
     return JSON.stringify([
       preset.mode,
@@ -794,7 +823,7 @@
       title.textContent = presetName;
       const detail = document.createElement("small");
       detail.textContent = isAnnotation
-        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? "Hand drawn" : "Clean"}`
+        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? `Hand drawn · ${roughnessLabel(preset.annotationRoughness)}` : "Clean"}`
         : preset.mode === "text"
           ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
           : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
@@ -834,6 +863,7 @@
     updatePreferenceLabels();
     setTextStyle(preset.textStyle || "bold");
     setPattern(preset.pattern || "solid");
+    setAnnotationRoughness(preset.annotationRoughness || 3);
     setAnnotationStyle(preset.annotationStyle || "clean");
     setMode(preset.mode || "mask");
     if (selection && preset.mode !== "text") canvas.focus({ preventScroll: true });
@@ -1356,29 +1386,53 @@
     targetContext.shadowOffsetY = Math.max(1, size * 0.22);
   }
 
-  function drawStyledCircle(targetContext, box, { color, size, style }) {
+  function drawStyledCircle(targetContext, box, { color, size, style, roughness = 3 }) {
     const centerX = box.x + box.width / 2;
     const centerY = box.y + box.height / 2;
     const radiusX = Math.max(0.5, box.width / 2 - size / 2);
     const radiusY = Math.max(0.5, box.height / 2 - size / 2);
+    const roughnessAmount = clampNumber(roughness, 1, 5, 3);
+    const looseness = (roughnessAmount - 1) / 4;
 
     targetContext.save();
     prepareMarkerContext(targetContext, size, color);
     targetContext.beginPath();
-    targetContext.ellipse(centerX, centerY, radiusX, radiusY, style === "hand" ? -0.025 : 0, 0, Math.PI * 2);
+    targetContext.ellipse(
+      centerX,
+      centerY,
+      radiusX * (style === "hand" ? 1 + looseness * 0.012 : 1),
+      radiusY * (style === "hand" ? 1 - looseness * 0.008 : 1),
+      style === "hand" ? -0.012 - looseness * 0.05 : 0,
+      0,
+      Math.PI * 2,
+    );
     targetContext.stroke();
 
     if (style === "hand") {
+      const wobble = 0.7 + looseness * 2.2;
       targetContext.shadowColor = "transparent";
-      targetContext.globalAlpha = 0.52;
-      targetContext.lineWidth = Math.max(1, size * 0.48);
-      targetContext.beginPath();
-      targetContext.ellipse(centerX + size * 0.28, centerY - size * 0.18, radiusX * 0.995, radiusY * 1.01, 0.018, Math.PI * 0.08, Math.PI * 1.92);
-      targetContext.stroke();
-      targetContext.globalAlpha = 0.26;
-      targetContext.beginPath();
-      targetContext.ellipse(centerX - size * 0.16, centerY + size * 0.12, radiusX * 1.008, radiusY * 0.992, -0.01, Math.PI * 0.72, Math.PI * 1.55);
-      targetContext.stroke();
+      const passes = [
+        { alpha: 0.5, width: 0.48, x: 0.24, y: -0.17, stretchX: -0.006, stretchY: 0.01, rotation: 0.018, start: 0.08, end: 1.92 },
+        { alpha: 0.29, width: 0.42, x: -0.22, y: 0.18, stretchX: 0.013, stretchY: -0.009, rotation: -0.022, start: 0.62, end: 1.58 },
+        { alpha: 0.2, width: 0.34, x: 0.35, y: 0.25, stretchX: -0.018, stretchY: 0.016, rotation: 0.038, start: 1.05, end: 1.88 },
+      ];
+      const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
+      passes.slice(0, passCount).forEach((pass, index) => {
+        const passStrength = wobble * (1 + index * 0.2);
+        targetContext.globalAlpha = pass.alpha + looseness * 0.05;
+        targetContext.lineWidth = Math.max(1, size * pass.width);
+        targetContext.beginPath();
+        targetContext.ellipse(
+          centerX + size * pass.x * passStrength,
+          centerY + size * pass.y * passStrength,
+          radiusX * (1 + pass.stretchX * passStrength),
+          radiusY * (1 + pass.stretchY * passStrength),
+          pass.rotation * passStrength,
+          Math.PI * pass.start,
+          Math.PI * pass.end,
+        );
+        targetContext.stroke();
+      });
     }
     targetContext.restore();
   }
@@ -1388,6 +1442,7 @@
       color: elements.annotationColor.value,
       size: markerSize(),
       style: annotationStyle,
+      roughness: annotationRoughness,
     });
   }
 
@@ -1408,7 +1463,7 @@
     return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   }
 
-  function drawStyledCurve(targetContext, { start, end, control, color, size, style, arrowHead }) {
+  function drawStyledCurve(targetContext, { start, end, control, color, size, style, roughness = 3, arrowHead }) {
     const deltaX = end.x - start.x;
     const deltaY = end.y - start.y;
     const length = Math.hypot(deltaX, deltaY);
@@ -1432,19 +1487,33 @@
     if (style === "hand") {
       const chordNormalX = -deltaY / length;
       const chordNormalY = deltaX / length;
-      const wobble = Math.max(0.7, size * 0.22);
+      const roughnessAmount = clampNumber(roughness, 1, 5, 3);
+      const looseness = (roughnessAmount - 1) / 4;
+      const wobble = Math.max(0.55, size * (0.14 + looseness * 0.34));
       targetContext.shadowColor = "transparent";
-      targetContext.globalAlpha = 0.46;
-      targetContext.lineWidth = Math.max(1, size * 0.5);
-      targetContext.beginPath();
-      targetContext.moveTo(start.x + chordNormalX * wobble, start.y + chordNormalY * wobble);
-      targetContext.quadraticCurveTo(
-        control.x - chordNormalX * wobble * 1.6,
-        control.y - chordNormalY * wobble * 1.6,
-        end.x - chordNormalX * wobble * 0.4,
-        end.y - chordNormalY * wobble * 0.4,
-      );
-      targetContext.stroke();
+      const passes = [
+        { start: 1, control: -1.7, end: -0.45, alpha: 0.46, width: 0.5 },
+        { start: -0.7, control: 1.35, end: 0.55, alpha: 0.27, width: 0.4 },
+        { start: 0.35, control: -2.3, end: -0.8, alpha: 0.18, width: 0.32 },
+      ];
+      const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
+      passes.slice(0, passCount).forEach((pass, index) => {
+        const passWobble = wobble * (1 + index * 0.28);
+        targetContext.globalAlpha = pass.alpha + looseness * 0.05;
+        targetContext.lineWidth = Math.max(1, size * pass.width);
+        targetContext.beginPath();
+        targetContext.moveTo(
+          start.x + chordNormalX * passWobble * pass.start,
+          start.y + chordNormalY * passWobble * pass.start,
+        );
+        targetContext.quadraticCurveTo(
+          control.x + chordNormalX * passWobble * pass.control,
+          control.y + chordNormalY * passWobble * pass.control,
+          end.x + chordNormalX * passWobble * pass.end,
+          end.y + chordNormalY * passWobble * pass.end,
+        );
+        targetContext.stroke();
+      });
     }
 
     if (arrowHead) {
@@ -1461,6 +1530,16 @@
         targetContext.lineTo(end.x, end.y);
         targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
         targetContext.stroke();
+        if (clampNumber(roughness, 1, 5, 3) >= 4) {
+          const headWobble = size * (0.18 + clampNumber(roughness, 1, 5, 3) * 0.045);
+          targetContext.globalAlpha = 0.3;
+          targetContext.lineWidth = Math.max(1, size * 0.48);
+          targetContext.beginPath();
+          targetContext.moveTo(baseX + normalX * (headWidth / 2 + headWobble), baseY + normalY * (headWidth / 2 + headWobble));
+          targetContext.lineTo(end.x - directionX * headWobble, end.y - directionY * headWobble);
+          targetContext.lineTo(baseX - normalX * (headWidth / 2 - headWobble), baseY - normalY * (headWidth / 2 - headWobble));
+          targetContext.stroke();
+        }
       } else {
         targetContext.beginPath();
         targetContext.moveTo(end.x, end.y);
@@ -1482,6 +1561,7 @@
       color: elements.annotationColor.value,
       size: markerSize(),
       style: annotationStyle,
+      roughness: annotationRoughness,
       arrowHead: true,
     });
   }
@@ -1495,6 +1575,7 @@
       color: elements.annotationColor.value,
       size: markerSize(),
       style: annotationStyle,
+      roughness: annotationRoughness,
       arrowHead: false,
     });
   }
@@ -1643,6 +1724,7 @@
         color: object.annotationColor,
         size: object.annotationSize,
         style: object.annotationStyle || "clean",
+        roughness: object.annotationRoughness || 3,
       });
       return;
     }
@@ -1654,6 +1736,7 @@
       color: object.annotationColor,
       size: object.annotationSize,
       style: object.annotationStyle || "clean",
+      roughness: object.annotationRoughness || 3,
       arrowHead: object.mode === "arrow",
     });
   }
@@ -1814,6 +1897,10 @@
       button.setAttribute("aria-pressed", String(isActive));
     });
     annotationStyle = ["clean", "hand"].includes(object.annotationStyle) ? object.annotationStyle : "clean";
+    annotationRoughness = clampNumber(object.annotationRoughness, 1, 5, 3);
+    elements.annotationRoughness.value = String(annotationRoughness);
+    elements.annotationRoughnessValue.value = roughnessLabel();
+    elements.annotationRoughnessField.hidden = annotationStyle !== "hand";
     elements.annotationStyleButtons.forEach((button) => {
       const isActive = button.dataset.annotationStyle === annotationStyle;
       button.classList.toggle("is-active", isActive);
@@ -1849,6 +1936,7 @@
     object.annotationColor = elements.annotationColor.value;
     object.annotationSize = markerSize();
     object.annotationStyle = annotationStyle;
+    object.annotationRoughness = annotationRoughness;
     rebuildBaseCanvas();
     render();
     scheduleCurrentImageSave();
@@ -1918,6 +2006,7 @@
       annotationColor: elements.annotationColor.value,
       annotationSize: markerSize(),
       annotationStyle,
+      annotationRoughness,
     };
     if (["arrow", "line"].includes(mode)) {
       const { start, end } = resolvedArrowPoints();
@@ -2548,6 +2637,9 @@
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
+  elements.annotationRoughness.addEventListener("input", () => {
+    setAnnotationRoughness(elements.annotationRoughness.value);
+  });
   elements.textStyleButtons.forEach((button) => {
     button.addEventListener("click", () => setTextStyle(button.dataset.textStyle));
   });
@@ -2573,6 +2665,7 @@
     elements.textColor,
     elements.annotationColor,
     elements.annotationSize,
+    elements.annotationRoughness,
     elements.fontSize,
     elements.autoTextSize,
     elements.replacementText,

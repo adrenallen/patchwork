@@ -650,6 +650,10 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 10px;
 }
 
+.annotation-roughness-field {
+  margin: 3px 0 12px;
+}
+
 .annotation-note {
   margin: -1px 0 16px;
   color: var(--muted);

@@ -12,7 +12,7 @@ Patchwork is a fast, local image redaction tool for screenshots. Paste, drop, or
 - Solid, diagonal, and crosshatch fills
 - Replacement text with custom background, text color, and font size
 - Selectable masks, text, circles, arrows, and lines that can be moved or resized after placement
-- Clean or hand-drawn marker circles, arrows, and lines with remembered color and stroke size
+- Clean or hand-drawn marker circles, arrows, and lines with remembered color, stroke size, and adjustable roughness
 - Bendable arrows and lines with a simple middle curve handle
 - Selection-based cropping with dimension-safe undo and redo
 - Non-destructive workspace zoom, Fit, and drag-to-pan controls

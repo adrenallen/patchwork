@@ -150,6 +150,10 @@
                   <button class="segment annotation-style-button" type="button" data-annotation-style="hand" aria-pressed="false">Hand drawn</button>
                 </div>
               </div>
+              <label class="range-field annotation-roughness-field" id="annotationRoughnessField" for="annotationRoughness" hidden>
+                <span class="range-heading"><span>Roughness</span><output id="annotationRoughnessValue" for="annotationRoughness">Loose</output></span>
+                <input id="annotationRoughness" type="range" min="1" max="5" step="1" value="3" />
+              </label>
               <p class="annotation-note" id="annotationNote">Drag a box around the area to circle.</p>
             </div>
 
