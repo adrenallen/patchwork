@@ -1186,16 +1186,42 @@ input[type="range"] {
 }
 
 .version-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 8px 8px 0;
   color: #8b96a9;
   font: 8px var(--utility);
   letter-spacing: 0.04em;
-  text-align: right;
 }
 
-.version-footer span {
+.version-footer strong {
   color: var(--muted);
   font-weight: 700;
+}
+
+.creator-credit {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.creator-credit a {
+  color: #52617a;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.creator-credit a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.creator-credit a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .workspace {
