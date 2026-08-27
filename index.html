@@ -43,7 +43,7 @@
               </span>
               <span><strong>Paste an image</strong><small><kbd>⌘</kbd><kbd>V</kbd> or choose a file</small></span>
             </button>
-            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
           </section>
 
           <section class="tool-section edit-section" id="editControls" aria-disabled="true">
@@ -53,8 +53,14 @@
             </div>
 
             <div class="segmented-control patch-mode-control" role="group" aria-label="Editing tool">
+              <button class="segment" id="arrangeModeButton" type="button" aria-pressed="false">
+                <span class="arrange-glyph" aria-hidden="true">✥</span> Arrange
+              </button>
               <button class="segment is-active" id="maskModeButton" type="button" aria-pressed="true">
                 <span class="mode-swatch" aria-hidden="true"></span> Mask
+              </button>
+              <button class="segment" id="blurModeButton" type="button" aria-pressed="false">
+                <span class="blur-glyph" aria-hidden="true">▦</span> Blur
               </button>
               <button class="segment" id="textModeButton" type="button" aria-pressed="false">
                 <span class="text-glyph" aria-hidden="true">Aa</span> Replace text
@@ -67,6 +73,9 @@
               </button>
               <button class="segment" id="lineModeButton" type="button" aria-pressed="false">
                 <span class="annotation-glyph line-glyph" aria-hidden="true"></span> Line
+              </button>
+              <button class="segment" id="cropModeButton" type="button" aria-pressed="false">
+                <span class="crop-glyph" aria-hidden="true">⌗</span> Crop
               </button>
             </div>
 
@@ -96,6 +105,21 @@
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div class="blur-options" id="blurOptions" hidden>
+              <div class="blur-style-field">
+                <span class="field-label" id="blurStyleLabel">Blur style</span>
+                <div class="segmented-control blur-style-control" role="group" aria-labelledby="blurStyleLabel">
+                  <button class="segment blur-style-button is-active" type="button" data-blur-style="gaussian" aria-pressed="true">Gaussian</button>
+                  <button class="segment blur-style-button" type="button" data-blur-style="pixelize" aria-pressed="false">Pixelize</button>
+                </div>
+              </div>
+              <label class="range-field blur-strength-field" for="blurStrength">
+                <span class="range-heading"><span>Strength</span><output id="blurStrengthValue" for="blurStrength">14</output></span>
+                <input id="blurStrength" type="range" min="2" max="40" step="1" value="14" />
+              </label>
+              <p class="annotation-note">Drag over an area to obscure it. The blur remains editable.</p>
             </div>
 
             <div class="text-options" id="textOptions" hidden>
@@ -159,20 +183,8 @@
 
             <button class="apply-button" id="applyButton" type="button" disabled>
               <span id="applyButtonLabel">Apply mask</span>
-              <span aria-hidden="true">↵</span>
+              <span aria-hidden="true">+</span>
             </button>
-
-            <div class="placement-preference">
-              <span class="placement-preference-copy">
-                <strong>Require Enter to apply</strong>
-                <small>Pause after drawing so you can adjust the box before placing it.</small>
-              </span>
-              <label class="switch-control" for="requireEnterToApply">
-                <span id="requireEnterToggleLabel">Off</span>
-                <input id="requireEnterToApply" type="checkbox" />
-                <span class="switch-track" aria-hidden="true"><span></span></span>
-              </label>
-            </div>
           </section>
 
           <section class="presentation-section" aria-label="Share canvas settings">
@@ -246,6 +258,21 @@
                 <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
                 <input id="cornerRadius" type="range" min="0" max="64" step="2" value="24" />
               </label>
+
+              <label class="match-ratio-control reflection-control" for="reflectionEnabled">
+                <input id="reflectionEnabled" type="checkbox" />
+                <span><strong>Reflection</strong><small>Adds a soft mirrored fade below the image.</small></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="layers-section" aria-label="Image layers">
+            <div class="section-heading layers-heading">
+              <span class="step-label">Image layers</span>
+              <button class="text-button" id="addLayerButton" type="button" disabled>Add image</button>
+            </div>
+            <div class="layers-list" id="layersList">
+              <p class="recent-empty" id="layersEmpty">Paste or add images to arrange them here.</p>
             </div>
           </section>
 
@@ -279,15 +306,11 @@
             <button class="icon-text-button" id="redoButton" type="button" disabled aria-label="Redo last edit">
               <span aria-hidden="true">↷</span> Redo
             </button>
-            <button class="icon-text-button" id="cropButton" type="button" disabled aria-label="Crop image to selected box">
-              Crop
-            </button>
             <button class="icon-text-button" id="clearSelectionButton" type="button" disabled>
               Clear box
             </button>
           </section>
           <footer class="version-footer">
-            <span>Patchwork <strong>v1.0.0</strong></span>
             <span class="creator-credit">Made with <span role="img" aria-label="love">❤️</span> by <a href="https://x.com/garrett_makes" target="_blank" rel="noopener noreferrer" aria-label="Garrett Makes on X">@garrett_makes</a></span>
           </footer>
         </aside>
@@ -314,7 +337,7 @@
               <span>Then drag over anything you want to cover.</span>
             </button>
             <div class="frame-preview" id="framePreview" hidden>
-              <canvas id="editorCanvas" aria-label="Image editor. Drag to place the selected tool, or enable Require Enter to confirm placement manually. Drag corner handles to resize a new or selected item. Click an existing item to select it, drag it to move it, and use the middle diamond handle to bend lines and arrows. Keyboard users can press Enter to place a pending item, arrow keys to move a selected item, and Delete to remove it." hidden></canvas>
+              <canvas id="editorCanvas" aria-label="Image editor. Drag to place the selected tool. Use Arrange to select, move, and resize image layers. Click an existing edit to move or resize it, and use the middle diamond handle to bend lines and arrows. Use Crop, then drag the crop area. Keyboard users can use arrow keys to move a selected edit and Delete to remove it." hidden></canvas>
             </div>
           </div>
         </section>

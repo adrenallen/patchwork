@@ -14,12 +14,19 @@
     canvasWrap: document.querySelector("#canvasWrap"),
     framePreview: document.querySelector("#framePreview"),
     editControls: document.querySelector("#editControls"),
+    arrangeModeButton: document.querySelector("#arrangeModeButton"),
     maskModeButton: document.querySelector("#maskModeButton"),
+    blurModeButton: document.querySelector("#blurModeButton"),
     textModeButton: document.querySelector("#textModeButton"),
     circleModeButton: document.querySelector("#circleModeButton"),
     arrowModeButton: document.querySelector("#arrowModeButton"),
     lineModeButton: document.querySelector("#lineModeButton"),
+    cropModeButton: document.querySelector("#cropModeButton"),
     patchFillOptions: document.querySelector("#patchFillOptions"),
+    blurOptions: document.querySelector("#blurOptions"),
+    blurStyleButtons: [...document.querySelectorAll(".blur-style-button")],
+    blurStrength: document.querySelector("#blurStrength"),
+    blurStrengthValue: document.querySelector("#blurStrengthValue"),
     textOptions: document.querySelector("#textOptions"),
     annotationOptions: document.querySelector("#annotationOptions"),
     annotationColor: document.querySelector("#annotationColor"),
@@ -43,11 +50,8 @@
     autoTextSize: document.querySelector("#autoTextSize"),
     applyButton: document.querySelector("#applyButton"),
     applyButtonLabel: document.querySelector("#applyButtonLabel"),
-    requireEnterToApply: document.querySelector("#requireEnterToApply"),
-    requireEnterToggleLabel: document.querySelector("#requireEnterToggleLabel"),
     undoButton: document.querySelector("#undoButton"),
     redoButton: document.querySelector("#redoButton"),
-    cropButton: document.querySelector("#cropButton"),
     clearSelectionButton: document.querySelector("#clearSelectionButton"),
     copyButton: document.querySelector("#copyButton"),
     downloadButton: document.querySelector("#downloadButton"),
@@ -60,6 +64,9 @@
     recentImagesList: document.querySelector("#recentImagesList"),
     recentImagesEmpty: document.querySelector("#recentImagesEmpty"),
     clearRecentImagesButton: document.querySelector("#clearRecentImagesButton"),
+    addLayerButton: document.querySelector("#addLayerButton"),
+    layersList: document.querySelector("#layersList"),
+    layersEmpty: document.querySelector("#layersEmpty"),
     frameEnabled: document.querySelector("#frameEnabled"),
     frameToggleLabel: document.querySelector("#frameToggleLabel"),
     presentationControls: document.querySelector("#presentationControls"),
@@ -73,6 +80,7 @@
     framePaddingValue: document.querySelector("#framePaddingValue"),
     cornerRadius: document.querySelector("#cornerRadius"),
     cornerRadiusValue: document.querySelector("#cornerRadiusValue"),
+    reflectionEnabled: document.querySelector("#reflectionEnabled"),
     zoomOutButton: document.querySelector("#zoomOutButton"),
     zoomInButton: document.querySelector("#zoomInButton"),
     zoomValue: document.querySelector("#zoomValue"),
@@ -101,7 +109,8 @@
     gradient: "patchwork.gradient",
     framePadding: "patchwork.framePadding",
     cornerRadius: "patchwork.cornerRadius",
-    requireEnterToApply: "patchwork.requireEnterToApply",
+    reflectionEnabled: "patchwork.reflectionEnabled",
+    toolSettings: "patchwork.toolSettings",
   };
 
   const GRADIENTS = {
@@ -134,7 +143,10 @@
   let aspectPreset = "square";
   let matchImageRatio = true;
   let gradientName = "dusk";
-  let requireEnterToApply = false;
+  let reflectionEnabled = false;
+  let blurStyle = "gaussian";
+  let blurStrength = 14;
+  let toolSettings = {};
   let selection = null;
   let dragStart = null;
   let arrowStart = null;
@@ -148,6 +160,10 @@
   let panPointerStart = null;
   let panOrigin = null;
   let placedObjects = [];
+  let imageLayers = [];
+  let activeImageLayerId = null;
+  let imageLayerInteraction = null;
+  let filePickerIntent = "replace";
   let activeObjectId = null;
   let objectInteraction = null;
   let selectionInteraction = null;
@@ -195,6 +211,25 @@
 
   function clonePlacedObjects(objects = placedObjects) {
     return objects.map((object) => ({ ...object }));
+  }
+
+  function cloneImageLayers(layers = imageLayers) {
+    return layers.map((layer) => ({ ...layer }));
+  }
+
+  function storedImageLayers(layers = imageLayers) {
+    return layers.map(({ image, ...layer }) => ({ ...layer }));
+  }
+
+  async function hydrateImageLayers(layers = []) {
+    return Promise.all(layers.map(async (layer) => ({
+      ...layer,
+      image: await imageFromBlob(layer.blob),
+    })));
+  }
+
+  function activeImageLayer() {
+    return imageLayers.find((layer) => layer.id === activeImageLayerId) || null;
   }
 
   function openImageDatabase() {
@@ -372,6 +407,7 @@
       height: baseCanvas.height,
       updatedAt: Date.now(),
       objects: clonePlacedObjects(),
+      layers: storedImageLayers(),
     };
     const blobs = Promise.all([canvasBlob(baseCanvas), createThumbnailBlob(), canvasBlob(sourceCanvas)]).then(
       (value) => ({ value }),
@@ -403,35 +439,64 @@
   }
 
   function initializePreferences() {
-    elements.backgroundColor.value = readPreference(STORAGE_KEYS.backgroundColor, "#111827");
-    elements.textColor.value = readPreference(STORAGE_KEYS.textColor, "#ffffff");
-    elements.fontSize.value = readPreference(STORAGE_KEYS.fontSize, "28");
-    elements.autoTextSize.checked = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
-    elements.annotationColor.value = readPreference(STORAGE_KEYS.annotationColor, "#ef4444");
-    elements.annotationSize.value = String(clampNumber(readPreference(STORAGE_KEYS.annotationSize, "6"), 2, 28, 6));
-    setAnnotationRoughness(readPreference(STORAGE_KEYS.annotationRoughness, "3"), false);
+    const legacyBackground = readPreference(STORAGE_KEYS.backgroundColor, "#111827");
+    const legacyTextColor = readPreference(STORAGE_KEYS.textColor, "#ffffff");
+    const legacyFontSize = clampNumber(readPreference(STORAGE_KEYS.fontSize, "28"), 8, 160, 28);
+    const legacyAutoTextSize = readPreference(STORAGE_KEYS.autoTextSize, "true") === "true";
+    const legacyAnnotationColor = readPreference(STORAGE_KEYS.annotationColor, "#ef4444");
+    const legacyAnnotationSize = clampNumber(readPreference(STORAGE_KEYS.annotationSize, "6"), 2, 28, 6);
+    const legacyRoughness = clampNumber(readPreference(STORAGE_KEYS.annotationRoughness, "3"), 1, 5, 3);
     const savedAnnotationStyle = readPreference(STORAGE_KEYS.annotationStyle, "clean");
-    setAnnotationStyle(["clean", "hand"].includes(savedAnnotationStyle) ? savedAnnotationStyle : "clean", false);
     const savedTextStyle = readPreference(STORAGE_KEYS.textStyle, "bold");
-    setTextStyle(["normal", "bold", "italic"].includes(savedTextStyle) ? savedTextStyle : "bold", false);
     const savedPattern = readPreference(STORAGE_KEYS.pattern, "solid");
-    setPattern(["solid", "diagonal", "hatch"].includes(savedPattern) ? savedPattern : "solid", false);
+    const legacyPattern = ["solid", "diagonal", "hatch"].includes(savedPattern) ? savedPattern : "solid";
+    const markerDefaults = {
+      annotationColor: legacyAnnotationColor,
+      annotationSize: legacyAnnotationSize,
+      annotationStyle: ["clean", "hand"].includes(savedAnnotationStyle) ? savedAnnotationStyle : "clean",
+      annotationRoughness: legacyRoughness,
+    };
+    const defaults = {
+      mask: { backgroundColor: legacyBackground, pattern: legacyPattern },
+      text: {
+        backgroundColor: legacyBackground,
+        pattern: "solid",
+        text: "",
+        textColor: legacyTextColor,
+        textStyle: ["normal", "bold", "italic"].includes(savedTextStyle) ? savedTextStyle : "bold",
+        fontSize: legacyFontSize,
+        autoTextSize: legacyAutoTextSize,
+      },
+      blur: { blurStyle: "gaussian", blurStrength: 14 },
+      circle: { ...markerDefaults },
+      arrow: { ...markerDefaults },
+      line: { ...markerDefaults },
+    };
+    try {
+      const savedToolSettings = JSON.parse(readPreference(STORAGE_KEYS.toolSettings, "{}"));
+      toolSettings = Object.fromEntries(Object.entries(defaults).map(([tool, values]) => [
+        tool,
+        { ...values, ...(savedToolSettings?.[tool] || {}) },
+      ]));
+    } catch {
+      toolSettings = defaults;
+    }
+    applyToolSettings("mask");
     frameEnabled = readPreference(STORAGE_KEYS.frameEnabled, "false") === "true";
+    reflectionEnabled = readPreference(STORAGE_KEYS.reflectionEnabled, "false") === "true";
     aspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "square");
     matchImageRatio = readPreference(STORAGE_KEYS.matchImageRatio, "true") === "true";
     if (matchImageRatio) aspectPreset = "source";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
-    requireEnterToApply = readPreference(STORAGE_KEYS.requireEnterToApply, "false") === "true";
     elements.frameEnabled.checked = frameEnabled;
+    elements.reflectionEnabled.checked = reflectionEnabled;
     elements.matchImageRatio.checked = matchImageRatio;
-    elements.requireEnterToApply.checked = requireEnterToApply;
     elements.outputWidth.value = String(clampNumber(readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
     elements.outputHeight.value = String(clampNumber(readPreference(STORAGE_KEYS.outputHeight, "1600"), 1, 12000, 1600));
     elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 24, 10));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
     updatePresentationUI();
-    updatePlacementPreferenceUI();
     loadRecentPatches();
     updatePreferenceLabels();
   }
@@ -439,6 +504,90 @@
   function clampNumber(value, minimum, maximum, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.round(number))) : fallback;
+  }
+
+  function saveToolSettings() {
+    savePreference(STORAGE_KEYS.toolSettings, JSON.stringify(toolSettings));
+  }
+
+  function captureToolSettings(tool = mode) {
+    if (tool === "mask") {
+      toolSettings.mask = { backgroundColor: elements.backgroundColor.value, pattern };
+    } else if (tool === "text") {
+      toolSettings.text = {
+        backgroundColor: elements.backgroundColor.value,
+        pattern,
+        text: elements.replacementText.value,
+        textColor: elements.textColor.value,
+        textStyle,
+        fontSize: Number(elements.fontSize.value),
+        autoTextSize: elements.autoTextSize.checked,
+      };
+    } else if (tool === "blur") {
+      toolSettings.blur = { blurStyle, blurStrength };
+    } else if (["circle", "arrow", "line"].includes(tool)) {
+      toolSettings[tool] = {
+        annotationColor: elements.annotationColor.value,
+        annotationSize: Number(elements.annotationSize.value),
+        annotationStyle,
+        annotationRoughness,
+      };
+    } else {
+      return;
+    }
+    saveToolSettings();
+  }
+
+  function applyToolSettings(tool) {
+    const settings = toolSettings[tool];
+    if (!settings) return;
+    if (["mask", "text"].includes(tool)) {
+      elements.backgroundColor.value = settings.backgroundColor || "#111827";
+      pattern = ["solid", "diagonal", "hatch"].includes(settings.pattern) ? settings.pattern : "solid";
+      elements.patternButtons.forEach((button) => {
+        const active = button.dataset.patchPattern === pattern;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
+    if (tool === "text") {
+      elements.replacementText.value = settings.text || "";
+      elements.textColor.value = settings.textColor || "#ffffff";
+      elements.fontSize.value = String(clampNumber(settings.fontSize, 8, 160, 28));
+      elements.autoTextSize.checked = settings.autoTextSize !== false;
+      textStyle = ["normal", "bold", "italic"].includes(settings.textStyle) ? settings.textStyle : "bold";
+      elements.textStyleButtons.forEach((button) => {
+        const active = button.dataset.textStyle === textStyle;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
+    if (tool === "blur") {
+      blurStyle = ["gaussian", "pixelize"].includes(settings.blurStyle) ? settings.blurStyle : "gaussian";
+      blurStrength = clampNumber(settings.blurStrength, 2, 40, 14);
+      elements.blurStrength.value = String(blurStrength);
+      elements.blurStrengthValue.value = blurStyle === "pixelize" ? `${blurStrength} px` : `${blurStrength}`;
+      elements.blurStyleButtons.forEach((button) => {
+        const active = button.dataset.blurStyle === blurStyle;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
+    if (["circle", "arrow", "line"].includes(tool)) {
+      elements.annotationColor.value = settings.annotationColor || "#ef4444";
+      elements.annotationSize.value = String(clampNumber(settings.annotationSize, 2, 28, 6));
+      annotationStyle = ["clean", "hand"].includes(settings.annotationStyle) ? settings.annotationStyle : "clean";
+      annotationRoughness = clampNumber(settings.annotationRoughness, 1, 5, 3);
+      elements.annotationRoughness.value = String(annotationRoughness);
+      elements.annotationRoughnessValue.value = roughnessLabel();
+      elements.annotationRoughnessField.hidden = annotationStyle !== "hand";
+      elements.annotationStyleButtons.forEach((button) => {
+        const active = button.dataset.annotationStyle === annotationStyle;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
+    updatePreferenceLabels();
   }
 
   function getOutputDimensions() {
@@ -465,6 +614,7 @@
 
   function updatePresentationUI() {
     elements.frameEnabled.checked = frameEnabled;
+    elements.reflectionEnabled.checked = reflectionEnabled;
     elements.matchImageRatio.checked = matchImageRatio;
     elements.frameToggleLabel.textContent = frameEnabled ? "On" : "Off";
     elements.presentationControls.hidden = !frameEnabled;
@@ -493,16 +643,6 @@
         : "Custom size · pixels";
     }
     updateFramePreview();
-  }
-
-  function updatePlacementPreferenceUI() {
-    elements.requireEnterToApply.checked = requireEnterToApply;
-    elements.requireEnterToggleLabel.textContent = requireEnterToApply ? "On" : "Off";
-    if (imageLoaded) {
-      elements.workspaceTip.textContent = requireEnterToApply
-        ? "Drag to mark · resize · press Enter to apply"
-        : "Drag to place · click an item to edit";
-    }
   }
 
   function setAspectPreset(button) {
@@ -623,6 +763,7 @@
       button.setAttribute("aria-pressed", String(isActive));
     });
     if (remember) savePreference(STORAGE_KEYS.textStyle, textStyle);
+    if (remember) captureToolSettings(mode);
     updateFontSizeUI();
     syncActiveObjectFromControls();
     render();
@@ -637,6 +778,7 @@
     });
     elements.annotationRoughnessField.hidden = annotationStyle !== "hand";
     if (remember) savePreference(STORAGE_KEYS.annotationStyle, annotationStyle);
+    if (remember) captureToolSettings(mode);
     syncActiveObjectFromControls();
     render();
   }
@@ -650,6 +792,7 @@
     elements.annotationRoughness.value = String(annotationRoughness);
     elements.annotationRoughnessValue.value = roughnessLabel();
     if (remember) savePreference(STORAGE_KEYS.annotationRoughness, String(annotationRoughness));
+    if (remember) captureToolSettings(mode);
     syncActiveObjectFromControls();
     render();
   }
@@ -700,6 +843,7 @@
       button.setAttribute("aria-pressed", String(isActive));
     });
     if (remember) savePreference(STORAGE_KEYS.pattern, pattern);
+    if (remember) captureToolSettings(mode);
     syncActiveObjectFromControls();
     render();
   }
@@ -709,7 +853,7 @@
       const saved = JSON.parse(readPreference(STORAGE_KEYS.recentPatches, "[]"));
       const normalizedPatches = Array.isArray(saved)
         ? saved
-            .filter((preset) => preset && ["mask", "text", "circle", "arrow", "line"].includes(preset.mode))
+            .filter((preset) => preset && ["mask", "blur", "text", "circle", "arrow", "line"].includes(preset.mode))
             .map((preset) => ({
               mode: preset.mode,
               pattern: ["solid", "diagonal", "hatch"].includes(preset.pattern) ? preset.pattern : "solid",
@@ -723,6 +867,8 @@
               annotationSize: clampNumber(preset.annotationSize, 2, 28, 6),
               annotationStyle: ["clean", "hand"].includes(preset.annotationStyle) ? preset.annotationStyle : "clean",
               annotationRoughness: clampNumber(preset.annotationRoughness, 1, 5, 3),
+              blurStyle: ["gaussian", "pixelize"].includes(preset.blurStyle) ? preset.blurStyle : "gaussian",
+              blurStrength: clampNumber(preset.blurStrength, 2, 40, 14),
             }))
         : [];
       const seen = new Set();
@@ -755,12 +901,17 @@
       annotationSize: Number(elements.annotationSize.value),
       annotationStyle,
       annotationRoughness,
+      blurStyle,
+      blurStrength,
     };
   }
 
   function presetKey(preset) {
     if (preset.mode === "mask") {
       return JSON.stringify([preset.mode, preset.pattern, preset.backgroundColor]);
+    }
+    if (preset.mode === "blur") {
+      return JSON.stringify([preset.mode, preset.blurStyle, preset.blurStrength]);
     }
     if (["circle", "arrow", "line"].includes(preset.mode)) {
       return JSON.stringify([
@@ -807,6 +958,8 @@
       const isAnnotation = ["circle", "arrow", "line"].includes(preset.mode);
       const presetName = preset.mode === "text"
         ? preset.text || "Text patch"
+        : preset.mode === "blur"
+          ? `${capitalize(preset.blurStyle || "gaussian")} blur`
         : isAnnotation
           ? capitalize(preset.mode)
           : `${capitalize(preset.pattern || "solid")} mask`;
@@ -823,12 +976,17 @@
       swatch.style.setProperty("--sample-text", preset.textColor || "#ffffff");
       swatch.textContent = preset.mode === "text"
         ? "Aa"
+        : preset.mode === "blur"
+          ? "▦"
         : isAnnotation
           ? ({ circle: "○", arrow: "↗", line: "╱" }[preset.mode])
           : "";
       if (preset.mode === "text") {
         swatch.style.fontStyle = preset.textStyle === "italic" ? "italic" : "normal";
         swatch.style.fontWeight = preset.textStyle === "bold" ? "700" : "400";
+      } else if (preset.mode === "blur") {
+        swatch.style.background = "linear-gradient(135deg, #94a3b8, #e2e8f0)";
+        swatch.style.color = "#14213d";
       } else if (isAnnotation) {
         swatch.classList.add("is-annotation");
         swatch.style.setProperty("--annotation-color", preset.annotationColor || "#ef4444");
@@ -844,6 +1002,8 @@
         ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? `Hand drawn · ${roughnessLabel(preset.annotationRoughness)}` : "Clean"}`
         : preset.mode === "text"
           ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
+          : preset.mode === "blur"
+            ? `${capitalize(preset.blurStyle || "gaussian")} · strength ${preset.blurStrength || 14}`
           : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
       copy.append(title, detail);
 
@@ -861,35 +1021,39 @@
   function reusePreset(preset) {
     commitPendingSettingsHistory();
     activeObjectId = null;
+    activeImageLayerId = null;
     selection = null;
     arrowStart = null;
     arrowEnd = null;
     rememberPreset(preset);
-    elements.backgroundColor.value = preset.backgroundColor || "#111827";
-    elements.textColor.value = preset.textColor || "#ffffff";
-    elements.fontSize.value = String(preset.fontSize || 28);
-    elements.autoTextSize.checked = preset.autoTextSize === true;
-    elements.replacementText.value = preset.text || "";
-    elements.annotationColor.value = preset.annotationColor || "#ef4444";
-    elements.annotationSize.value = String(preset.annotationSize || 6);
-    savePreference(STORAGE_KEYS.backgroundColor, elements.backgroundColor.value);
-    savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
-    savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
-    savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
-    savePreference(STORAGE_KEYS.annotationColor, elements.annotationColor.value);
-    savePreference(STORAGE_KEYS.annotationSize, elements.annotationSize.value);
-    updatePreferenceLabels();
-    setTextStyle(preset.textStyle || "bold");
-    setPattern(preset.pattern || "solid");
-    setAnnotationRoughness(preset.annotationRoughness || 3);
-    setAnnotationStyle(preset.annotationStyle || "clean");
+    if (preset.mode === "mask") {
+      toolSettings.mask = { backgroundColor: preset.backgroundColor || "#111827", pattern: preset.pattern || "solid" };
+    } else if (preset.mode === "text") {
+      toolSettings.text = {
+        backgroundColor: preset.backgroundColor || "#111827",
+        pattern: preset.pattern || "solid",
+        text: preset.text || "",
+        textColor: preset.textColor || "#ffffff",
+        textStyle: preset.textStyle || "bold",
+        fontSize: preset.fontSize || 28,
+        autoTextSize: preset.autoTextSize === true,
+      };
+    } else if (preset.mode === "blur") {
+      toolSettings.blur = {
+        blurStyle: ["gaussian", "pixelize"].includes(preset.blurStyle) ? preset.blurStyle : "gaussian",
+        blurStrength: clampNumber(preset.blurStrength, 2, 40, 14),
+      };
+    } else if (["circle", "arrow", "line"].includes(preset.mode)) {
+      toolSettings[preset.mode] = {
+        annotationColor: preset.annotationColor || "#ef4444",
+        annotationSize: preset.annotationSize || 6,
+        annotationStyle: preset.annotationStyle || "clean",
+        annotationRoughness: preset.annotationRoughness || 3,
+      };
+    }
+    saveToolSettings();
     setMode(preset.mode || "mask");
-    if (selection && preset.mode !== "text") canvas.focus({ preventScroll: true });
-    showToast(selection
-      ? "Recent tool loaded. Press Enter to place it."
-      : requireEnterToApply
-        ? "Recent tool loaded. Drag, adjust, then press Enter."
-        : "Recent tool loaded. Drag to place it.");
+    showToast("Recent tool loaded. Drag to place it.");
   }
 
   function showToast(message) {
@@ -951,6 +1115,7 @@
 
     elements.framePreview.hidden = false;
     elements.framePreview.classList.toggle("is-framed", frameEnabled);
+    elements.framePreview.classList.toggle("has-reflection", frameEnabled && reflectionEnabled);
 
     if (!frameEnabled) {
       elements.framePreview.classList.remove("shows-transparency");
@@ -962,6 +1127,7 @@
       canvas.style.removeProperty("width");
       canvas.style.removeProperty("height");
       canvas.style.removeProperty("border-radius");
+      canvas.style.removeProperty("margin-bottom");
       updateImageMeta();
       updateViewTransform();
       window.requestAnimationFrame(render);
@@ -979,7 +1145,8 @@
     const verticalPadding = previewHeight * paddingRatio;
     const availableImageWidth = Math.max(1, previewWidth - horizontalPadding * 2);
     const availableImageHeight = Math.max(1, previewHeight - verticalPadding * 2);
-    const imageScale = Math.min(availableImageWidth / baseCanvas.width, availableImageHeight / baseCanvas.height);
+    const reflectionSpace = reflectionEnabled ? 1.2 : 1;
+    const imageScale = Math.min(availableImageWidth / baseCanvas.width, availableImageHeight / (baseCanvas.height * reflectionSpace));
     const radius = Number(elements.cornerRadius.value) * previewScale;
     const transparentBackground = frameBackgroundIsTransparent();
     const zeroPadding = paddingRatio === 0;
@@ -994,6 +1161,7 @@
     canvas.style.width = `${baseCanvas.width * imageScale}px`;
     canvas.style.height = `${baseCanvas.height * imageScale}px`;
     canvas.style.borderRadius = `${radius}px`;
+    canvas.style.marginBottom = reflectionEnabled ? `${baseCanvas.height * imageScale * 0.2}px` : "0";
     updateImageMeta();
     updateViewTransform();
     window.requestAnimationFrame(render);
@@ -1003,7 +1171,8 @@
     return Boolean(file && file.type.startsWith("image/"));
   }
 
-  function chooseFile() {
+  function chooseFile(intent = "replace") {
+    filePickerIntent = intent;
     elements.fileInput.click();
   }
 
@@ -1017,17 +1186,31 @@
     );
   }
 
-  function activateImage(image, { id, label, name, objects = [] }) {
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    sourceCanvas.width = image.naturalWidth;
-    sourceCanvas.height = image.naturalHeight;
-    sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
-    sourceContext.drawImage(image, 0, 0);
-    baseCanvas.width = image.naturalWidth;
-    baseCanvas.height = image.naturalHeight;
+  function createImageLayer(image, blob, name, placement = {}) {
+    return {
+      id: placement.id || createObjectId(),
+      name: name || "Image layer",
+      blob,
+      image,
+      x: Number.isFinite(placement.x) ? placement.x : 0,
+      y: Number.isFinite(placement.y) ? placement.y : 0,
+      width: Number.isFinite(placement.width) ? placement.width : image.naturalWidth,
+      height: Number.isFinite(placement.height) ? placement.height : image.naturalHeight,
+      visible: placement.visible !== false,
+    };
+  }
+
+  function activateDocument({ width, height, layers, id, label, name, objects = [] }) {
+    canvas.width = width;
+    canvas.height = height;
+    sourceCanvas.width = width;
+    sourceCanvas.height = height;
+    baseCanvas.width = width;
+    baseCanvas.height = height;
+    imageLayers = cloneImageLayers(layers);
     placedObjects = clonePlacedObjects(objects);
     activeObjectId = null;
+    activeImageLayerId = null;
     rebuildBaseCanvas();
 
     imageLoaded = true;
@@ -1050,13 +1233,28 @@
     canvas.hidden = false;
     canvas.tabIndex = 0;
     elements.editControls.setAttribute("aria-disabled", "false");
+    elements.addLayerButton.disabled = false;
     elements.copyButton.disabled = false;
     elements.downloadButton.disabled = false;
-    updatePlacementPreferenceUI();
+    elements.workspaceTip.textContent = "Drag to place · click an item to edit";
+    renderLayers();
     updateControls();
     updatePresentationUI();
     render();
     canvas.focus({ preventScroll: true });
+  }
+
+  function activateImage(image, { blob, id, label, name, objects = [] }) {
+    const layer = createImageLayer(image, blob, label || name);
+    activateDocument({
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      layers: [layer],
+      id,
+      label,
+      name,
+      objects,
+    });
   }
 
   function imageFromBlob(blob) {
@@ -1085,15 +1283,30 @@
     await saveCurrentImage({ notifyFailure: true, refresh: false });
 
     try {
-      const hasEditableDocument = Boolean(record.sourceBlob && Array.isArray(record.objects));
-      const image = await imageFromBlob(hasEditableDocument ? record.sourceBlob : record.blob);
-      if (!imageDimensionsAreValid(image)) throw new Error("The saved image is too large.");
-      activateImage(image, {
-        id: record.id,
-        label: record.label,
-        name: record.name,
-        objects: hasEditableDocument ? record.objects : [],
-      });
+      if (Array.isArray(record.layers) && record.layers.length) {
+        const layers = await hydrateImageLayers(record.layers);
+        activateDocument({
+          width: record.width,
+          height: record.height,
+          layers,
+          id: record.id,
+          label: record.label,
+          name: record.name,
+          objects: Array.isArray(record.objects) ? record.objects : [],
+        });
+      } else {
+        const hasEditableDocument = Boolean(record.sourceBlob && Array.isArray(record.objects));
+        const blob = hasEditableDocument ? record.sourceBlob : record.blob;
+        const image = await imageFromBlob(blob);
+        if (!imageDimensionsAreValid(image)) throw new Error("The saved image is too large.");
+        activateImage(image, {
+          blob,
+          id: record.id,
+          label: record.label,
+          name: record.name,
+          objects: hasEditableDocument ? record.objects : [],
+        });
+      }
       try {
         await storeImageRecord({ ...record, updatedAt: Date.now() });
         await loadSavedImages();
@@ -1109,36 +1322,184 @@
     }
   }
 
-  function loadImageFile(file) {
-    if (!isImageFile(file)) {
+  async function addImageLayer(image, blob, name, { remember = true } = {}) {
+    if (!imageLoaded) return;
+    if (remember) rememberHistoryStep();
+    const scale = Math.min((canvas.width * 0.74) / image.naturalWidth, (canvas.height * 0.74) / image.naturalHeight, 1);
+    const width = Math.max(4, image.naturalWidth * scale);
+    const height = Math.max(4, image.naturalHeight * scale);
+    const layer = createImageLayer(image, blob, name, {
+      x: (canvas.width - width) / 2,
+      y: (canvas.height - height) / 2,
+      width,
+      height,
+    });
+    imageLayers.push(layer);
+    activeImageLayerId = layer.id;
+    activeObjectId = null;
+    selection = { x: layer.x, y: layer.y, width: layer.width, height: layer.height };
+    rebuildBaseCanvas();
+    renderLayers();
+    setMode("arrange", { preserveLayer: true });
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+  }
+
+  async function loadImageFiles(files, { replace = false } = {}) {
+    const imageFiles = [...files].filter(isImageFile);
+    if (!imageFiles.length) {
       showToast("Choose a PNG, JPG, WebP, or GIF image.");
       return;
     }
+    const decoded = [];
+    try {
+      for (const file of imageFiles) {
+        const image = await imageFromBlob(file);
+        if (!imageDimensionsAreValid(image)) throw new Error("large");
+        decoded.push({ file, image });
+      }
+    } catch (error) {
+      showToast(error.message === "large" ? "One of those images is too large. Use images under 48 megapixels." : "One of those images could not be opened.");
+      return;
+    }
 
-    const reader = new FileReader();
-    reader.onerror = () => showToast("That image could not be read.");
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => showToast("That image format could not be opened.");
-      image.onload = async () => {
-        if (!imageDimensionsAreValid(image)) {
-          showToast("This image is too large. Use one under 48 megapixels.");
-          return;
-        }
+    let startIndex = 0;
+    if (replace || !imageLoaded) {
+      await saveCurrentImage({ notifyFailure: true, refresh: false });
+      const { file, image } = decoded[0];
+      const label = file.name || "Pasted image";
+      activateImage(image, {
+        blob: file,
+        id: createImageId(),
+        label,
+        name: (file.name || "pasted-image").replace(/\.[^.]+$/, ""),
+      });
+      startIndex = 1;
+    }
+    for (let index = startIndex; index < decoded.length; index += 1) {
+      const { file, image } = decoded[index];
+      await addImageLayer(image, file, file.name || `Image ${imageLayers.length + 1}`, { remember: true });
+    }
+    await saveCurrentImage({ notifyFailure: true });
+    showToast(decoded.length > 1 || startIndex === 0 ? `${decoded.length} image${decoded.length === 1 ? "" : "s"} added as layers.` : "Image ready. Drag a box to start.");
+  }
 
-        await saveCurrentImage({ notifyFailure: true, refresh: false });
-        const label = file.name || "Pasted image";
-        activateImage(image, {
-          id: createImageId(),
-          label,
-          name: (file.name || "pasted-image").replace(/\.[^.]+$/, ""),
-        });
-        await saveCurrentImage({ notifyFailure: true });
-        showToast("Image ready. Drag a box to start.");
-      };
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
+  function layerThumbnail(layer) {
+    const thumbnail = document.createElement("canvas");
+    thumbnail.width = 76;
+    thumbnail.height = 68;
+    const thumbnailContext = thumbnail.getContext("2d");
+    thumbnailContext.fillStyle = "#ffffff";
+    thumbnailContext.fillRect(0, 0, thumbnail.width, thumbnail.height);
+    const scale = Math.min(thumbnail.width / layer.image.naturalWidth, thumbnail.height / layer.image.naturalHeight);
+    const width = layer.image.naturalWidth * scale;
+    const height = layer.image.naturalHeight * scale;
+    thumbnailContext.drawImage(layer.image, (thumbnail.width - width) / 2, (thumbnail.height - height) / 2, width, height);
+    return thumbnail.toDataURL("image/png");
+  }
+
+  function selectImageLayer(layer) {
+    commitPendingSettingsHistory();
+    activeObjectId = null;
+    activeImageLayerId = layer.id;
+    selection = { x: layer.x, y: layer.y, width: layer.width, height: layer.height };
+    arrowStart = null;
+    arrowEnd = null;
+    setMode("arrange", { preserveLayer: true });
+    renderLayers();
+    updateControls();
+    render();
+    canvas.focus({ preventScroll: true });
+  }
+
+  function reorderImageLayer(layerId, direction) {
+    const index = imageLayers.findIndex((layer) => layer.id === layerId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= imageLayers.length) return;
+    rememberHistoryStep();
+    [imageLayers[index], imageLayers[nextIndex]] = [imageLayers[nextIndex], imageLayers[index]];
+    rebuildBaseCanvas();
+    renderLayers();
+    render();
+    scheduleCurrentImageSave();
+  }
+
+  function deleteImageLayer(layerId) {
+    if (imageLayers.length <= 1) {
+      showToast("A document needs at least one image layer.");
+      return;
+    }
+    rememberHistoryStep();
+    imageLayers = imageLayers.filter((layer) => layer.id !== layerId);
+    if (activeImageLayerId === layerId) {
+      activeImageLayerId = imageLayers.at(-1)?.id || null;
+      const layer = activeImageLayer();
+      selection = layer ? { x: layer.x, y: layer.y, width: layer.width, height: layer.height } : null;
+    }
+    rebuildBaseCanvas();
+    renderLayers();
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+    showToast("Image layer removed.");
+  }
+
+  function renderLayers() {
+    elements.layersList.querySelectorAll(".image-layer-row").forEach((row) => row.remove());
+    elements.layersEmpty.hidden = imageLayers.length > 0;
+    [...imageLayers].reverse().forEach((layer) => {
+      const sourceIndex = imageLayers.findIndex((item) => item.id === layer.id);
+      const row = document.createElement("div");
+      row.className = "image-layer-row";
+      row.classList.toggle("is-active", layer.id === activeImageLayerId);
+
+      const select = document.createElement("button");
+      select.type = "button";
+      select.className = "image-layer-select";
+      select.setAttribute("aria-label", `Select image layer ${layer.name}`);
+      const thumbnail = document.createElement("img");
+      thumbnail.className = "image-layer-thumb";
+      thumbnail.src = layerThumbnail(layer);
+      thumbnail.alt = "";
+      const copy = document.createElement("span");
+      copy.className = "image-layer-copy";
+      const title = document.createElement("strong");
+      title.textContent = layer.name || "Image layer";
+      const detail = document.createElement("small");
+      detail.textContent = `${Math.round(layer.width)} × ${Math.round(layer.height)} px`;
+      copy.append(title, detail);
+      select.append(thumbnail, copy);
+      select.addEventListener("click", () => selectImageLayer(layer));
+
+      const actions = document.createElement("span");
+      actions.className = "layer-actions";
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "layer-action";
+      up.textContent = "↑";
+      up.title = "Move layer forward";
+      up.disabled = sourceIndex === imageLayers.length - 1;
+      up.addEventListener("click", () => reorderImageLayer(layer.id, 1));
+      const down = document.createElement("button");
+      down.type = "button";
+      down.className = "layer-action";
+      down.textContent = "↓";
+      down.title = "Move layer backward";
+      down.disabled = sourceIndex === 0;
+      down.addEventListener("click", () => reorderImageLayer(layer.id, -1));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "layer-action";
+      remove.textContent = "×";
+      remove.title = "Remove layer";
+      remove.disabled = imageLayers.length <= 1;
+      remove.addEventListener("click", () => deleteImageLayer(layer.id));
+      actions.append(up, down, remove);
+
+      row.append(select, actions);
+      elements.layersList.append(row);
+    });
   }
 
   function canvasPoint(event) {
@@ -1253,6 +1614,111 @@
     }
     return point.x >= selection.x && point.x <= selection.x + selection.width
       && point.y >= selection.y && point.y <= selection.y + selection.height;
+  }
+
+  function imageLayerContainsPoint(layer, point) {
+    return point.x >= layer.x && point.x <= layer.x + layer.width
+      && point.y >= layer.y && point.y <= layer.y + layer.height;
+  }
+
+  function findImageLayerAtPoint(point) {
+    return [...imageLayers].reverse().find((layer) => layer.visible !== false && imageLayerContainsPoint(layer, point)) || null;
+  }
+
+  function imageLayerHandleAtPoint(point) {
+    const layer = activeImageLayer();
+    if (!layer || mode !== "arrange") return null;
+    const tolerance = viewHitTolerance();
+    const handles = [
+      ["nw", { x: layer.x, y: layer.y }],
+      ["ne", { x: layer.x + layer.width, y: layer.y }],
+      ["se", { x: layer.x + layer.width, y: layer.y + layer.height }],
+      ["sw", { x: layer.x, y: layer.y + layer.height }],
+    ];
+    return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
+  }
+
+  function beginImageLayerInteraction(layer, point, handle = null) {
+    imageLayerInteraction = {
+      layerId: layer.id,
+      kind: handle ? "resize" : "move",
+      handle,
+      startPoint: { ...point },
+      original: { ...layer },
+      beforeSnapshot: null,
+      changed: false,
+    };
+  }
+
+  function resizeImageLayer(original, handle, point) {
+    const opposite = {
+      nw: { x: original.x + original.width, y: original.y + original.height },
+      ne: { x: original.x, y: original.y + original.height },
+      se: { x: original.x, y: original.y },
+      sw: { x: original.x + original.width, y: original.y },
+    }[handle];
+    const proposedWidth = Math.max(20, Math.abs(point.x - opposite.x));
+    const proposedHeight = Math.max(20, Math.abs(point.y - opposite.y));
+    const ratio = original.width / original.height;
+    let width;
+    let height;
+    if (proposedWidth / original.width >= proposedHeight / original.height) {
+      width = proposedWidth;
+      height = width / ratio;
+    } else {
+      height = proposedHeight;
+      width = height * ratio;
+    }
+    return {
+      ...original,
+      x: handle.includes("w") ? opposite.x - width : opposite.x,
+      y: handle.includes("n") ? opposite.y - height : opposite.y,
+      width,
+      height,
+    };
+  }
+
+  function updateImageLayerInteraction(point) {
+    if (!imageLayerInteraction) return;
+    const index = imageLayers.findIndex((layer) => layer.id === imageLayerInteraction.layerId);
+    if (index < 0) return;
+    const original = imageLayerInteraction.original;
+    let updated;
+    if (imageLayerInteraction.kind === "resize") {
+      updated = resizeImageLayer(original, imageLayerInteraction.handle, point);
+    } else {
+      const requestedX = original.x + point.x - imageLayerInteraction.startPoint.x;
+      const requestedY = original.y + point.y - imageLayerInteraction.startPoint.y;
+      const minimumVisible = Math.min(20, original.width, original.height);
+      updated = {
+        ...original,
+        x: Math.max(-original.width + minimumVisible, Math.min(canvas.width - minimumVisible, requestedX)),
+        y: Math.max(-original.height + minimumVisible, Math.min(canvas.height - minimumVisible, requestedY)),
+      };
+    }
+    const changed = updated.x !== original.x || updated.y !== original.y || updated.width !== original.width || updated.height !== original.height;
+    if (changed && !imageLayerInteraction.beforeSnapshot) imageLayerInteraction.beforeSnapshot = snapshot();
+    imageLayerInteraction.changed = changed;
+    imageLayers[index] = updated;
+    selection = { x: updated.x, y: updated.y, width: updated.width, height: updated.height };
+    rebuildSourceCanvas();
+    updateControls();
+    render();
+  }
+
+  function finishImageLayerInteraction() {
+    if (!imageLayerInteraction) return;
+    if (imageLayerInteraction.changed && imageLayerInteraction.beforeSnapshot) {
+      history.push(imageLayerInteraction.beforeSnapshot);
+      if (history.length > 12) history.shift();
+      future = [];
+      rebuildBaseCanvas();
+      renderLayers();
+      scheduleCurrentImageSave();
+    }
+    imageLayerInteraction = null;
+    updateControls();
+    render();
   }
 
   function translatedObject(original, deltaX, deltaY) {
@@ -1711,7 +2177,59 @@
 
   function drawCurrentTool(targetContext, includeOutline = false) {
     if (["circle", "arrow", "line"].includes(mode)) drawAnnotation(targetContext, includeOutline);
-    else drawPatch(targetContext, includeOutline);
+    else if (mode === "blur" && selection) {
+      drawBlurRegion(targetContext, { ...selection, blurStyle, blurStrength });
+      if (includeOutline) drawSelectionOutline(targetContext);
+    } else if (mode === "crop" && selection) {
+      drawCropPreview(targetContext);
+    } else if (["mask", "text"].includes(mode)) drawPatch(targetContext, includeOutline);
+  }
+
+  function drawBlurRegion(targetContext, region) {
+    const x = Math.max(0, Math.floor(region.x));
+    const y = Math.max(0, Math.floor(region.y));
+    const width = Math.max(1, Math.min(targetContext.canvas.width - x, Math.ceil(region.width)));
+    const height = Math.max(1, Math.min(targetContext.canvas.height - y, Math.ceil(region.height)));
+    const strength = clampNumber(region.blurStrength, 2, 40, 14);
+    const copy = document.createElement("canvas");
+    copy.width = targetContext.canvas.width;
+    copy.height = targetContext.canvas.height;
+    copy.getContext("2d").drawImage(targetContext.canvas, 0, 0);
+
+    targetContext.save();
+    targetContext.beginPath();
+    targetContext.rect(x, y, width, height);
+    targetContext.clip();
+    if (region.blurStyle === "pixelize") {
+      const pixelWidth = Math.max(1, Math.ceil(width / strength));
+      const pixelHeight = Math.max(1, Math.ceil(height / strength));
+      const pixels = document.createElement("canvas");
+      pixels.width = pixelWidth;
+      pixels.height = pixelHeight;
+      const pixelContext = pixels.getContext("2d");
+      pixelContext.imageSmoothingEnabled = false;
+      pixelContext.drawImage(copy, x, y, width, height, 0, 0, pixelWidth, pixelHeight);
+      targetContext.imageSmoothingEnabled = false;
+      targetContext.drawImage(pixels, 0, 0, pixelWidth, pixelHeight, x, y, width, height);
+      targetContext.imageSmoothingEnabled = true;
+    } else {
+      targetContext.filter = `blur(${strength}px)`;
+      targetContext.drawImage(copy, 0, 0);
+      targetContext.filter = "none";
+    }
+    targetContext.restore();
+  }
+
+  function drawCropPreview(targetContext) {
+    if (!selection) return;
+    targetContext.save();
+    targetContext.fillStyle = "rgba(15, 23, 42, 0.48)";
+    targetContext.beginPath();
+    targetContext.rect(0, 0, canvas.width, canvas.height);
+    targetContext.rect(selection.x, selection.y, selection.width, selection.height);
+    targetContext.fill("evenodd");
+    targetContext.restore();
+    drawSelectionOutline(targetContext);
   }
 
   function drawPattern(targetContext) {
@@ -1819,6 +2337,10 @@
   }
 
   function drawPlacedObject(targetContext, object) {
+    if (object.mode === "blur") {
+      drawBlurRegion(targetContext, object);
+      return;
+    }
     if (["mask", "text"].includes(object.mode)) {
       targetContext.save();
       targetContext.fillStyle = object.backgroundColor;
@@ -1864,11 +2386,21 @@
 
   function rebuildBaseCanvas() {
     if (!sourceCanvas.width || !sourceCanvas.height) return;
+    rebuildSourceCanvas();
     if (baseCanvas.width !== sourceCanvas.width) baseCanvas.width = sourceCanvas.width;
     if (baseCanvas.height !== sourceCanvas.height) baseCanvas.height = sourceCanvas.height;
     baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
     baseContext.drawImage(sourceCanvas, 0, 0);
     placedObjects.forEach((object) => drawPlacedObject(baseContext, object));
+  }
+
+  function rebuildSourceCanvas() {
+    if (!sourceCanvas.width || !sourceCanvas.height) return;
+    sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+    imageLayers.forEach((layer) => {
+      if (layer.visible === false) return;
+      sourceContext.drawImage(layer.image, layer.x, layer.y, layer.width, layer.height);
+    });
   }
 
   function quadraticPoint(start, control, end, progress) {
@@ -1920,6 +2452,7 @@
     placedObjects.forEach((object) => drawPlacedObject(context, object));
     const selectedObject = activeObject();
     if (selectedObject) drawObjectSelection(context, selectedObject);
+    else if (mode === "arrange" && activeImageLayer()) drawSelectionOutline(context);
     else drawCurrentTool(context, true);
   }
 
@@ -1927,17 +2460,20 @@
     const selectedObject = activeObject();
     const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
     const hasToolSelection = ["arrow", "line"].includes(mode) ? arrowLength() >= 2 : hasAreaSelection;
-    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject);
-    elements.cropButton.disabled = !imageLoaded || !hasAreaSelection;
+    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop"].includes(mode);
+    elements.applyButton.hidden = ["arrange", "crop"].includes(mode);
     elements.clearSelectionButton.disabled = !selection;
     elements.undoButton.disabled = history.length === 0 || isRestoring;
     elements.redoButton.disabled = future.length === 0 || isRestoring;
     elements.applyButtonLabel.textContent = selectedObject ? "Selected item" : {
       mask: "Apply mask",
+      blur: "Apply blur",
       text: "Place text",
       circle: "Place circle",
       arrow: "Place arrow",
       line: "Place line",
+      arrange: "Arrange image",
+      crop: "Crop image",
     }[mode];
     updateFontSizeUI();
 
@@ -1947,12 +2483,17 @@
         : `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
     } else {
       elements.selectionReadout.textContent = imageLoaded
-        ? (["arrow", "line"].includes(mode) ? `Drag a ${mode}` : "Draw a box")
+        ? mode === "arrange"
+          ? "Select an image"
+          : mode === "crop"
+            ? "Drag crop area"
+            : (["arrow", "line"].includes(mode) ? `Drag a ${mode}` : "Draw a box")
         : "Add an image first";
     }
   }
 
-  function setMode(nextMode, { preserveActive = false } = {}) {
+  function setMode(nextMode, { preserveActive = false, preserveLayer = false, loadSettings = true } = {}) {
+    if (!activeObject()) captureToolSettings(mode);
     if (panModeEnabled) {
       panModeEnabled = false;
       updateViewTransform();
@@ -1964,22 +2505,31 @@
       arrowStart = null;
       arrowEnd = null;
     }
-    mode = ["mask", "text", "circle", "arrow", "line"].includes(nextMode) ? nextMode : "mask";
+    if (!preserveLayer && activeImageLayerId) {
+      activeImageLayerId = null;
+      if (!activeObjectId) selection = null;
+    }
+    mode = ["arrange", "mask", "blur", "text", "circle", "arrow", "line", "crop"].includes(nextMode) ? nextMode : "mask";
     const isText = mode === "text";
     const isAnnotation = ["circle", "arrow", "line"].includes(mode);
+    const isBlur = mode === "blur";
     [
+      [elements.arrangeModeButton, "arrange"],
       [elements.maskModeButton, "mask"],
+      [elements.blurModeButton, "blur"],
       [elements.textModeButton, "text"],
       [elements.circleModeButton, "circle"],
       [elements.arrowModeButton, "arrow"],
       [elements.lineModeButton, "line"],
+      [elements.cropModeButton, "crop"],
     ].forEach(([button, buttonMode]) => {
       const isActive = mode === buttonMode;
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
-    elements.patchFillOptions.hidden = isAnnotation;
+    elements.patchFillOptions.hidden = !["mask", "text"].includes(mode);
     elements.textOptions.hidden = !isText;
+    elements.blurOptions.hidden = !isBlur;
     elements.annotationOptions.hidden = !isAnnotation;
     elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
       ? `Drag the ${mode}, then move the diamond handle to bend it.`
@@ -1987,6 +2537,14 @@
     if (["arrow", "line"].includes(mode) && selection && (!arrowStart || !arrowEnd)) {
       arrowStart = { x: selection.x, y: selection.y };
       arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
+    }
+    if (loadSettings) applyToolSettings(mode);
+    if (imageLoaded) {
+      elements.workspaceTip.textContent = mode === "arrange"
+        ? "Click an image · drag to move · corners resize"
+        : mode === "crop"
+          ? "Drag a box to crop immediately"
+          : "Drag to place · click an item to edit";
     }
     updateControls();
     render();
@@ -1997,7 +2555,8 @@
     commitPendingSettingsHistory();
     activeObjectId = object.id;
     syncSelectionFromActiveObject();
-    setMode(object.mode, { preserveActive: true });
+    activeImageLayerId = null;
+    setMode(object.mode, { preserveActive: true, loadSettings: false });
     elements.backgroundColor.value = object.backgroundColor || "#111827";
     elements.textColor.value = object.textColor || "#ffffff";
     elements.fontSize.value = String(object.fontSize || 28);
@@ -2005,6 +2564,15 @@
     elements.replacementText.value = object.text || "";
     elements.annotationColor.value = object.annotationColor || "#ef4444";
     elements.annotationSize.value = String(object.annotationSize || 6);
+    blurStyle = ["gaussian", "pixelize"].includes(object.blurStyle) ? object.blurStyle : "gaussian";
+    blurStrength = clampNumber(object.blurStrength, 2, 40, 14);
+    elements.blurStrength.value = String(blurStrength);
+    elements.blurStrengthValue.value = blurStyle === "pixelize" ? `${blurStrength} px` : `${blurStrength}`;
+    elements.blurStyleButtons.forEach((button) => {
+      const isActive = button.dataset.blurStyle === blurStyle;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
     textStyle = ["normal", "bold", "italic"].includes(object.textStyle) ? object.textStyle : "bold";
     elements.textStyleButtons.forEach((button) => {
       const isActive = button.dataset.textStyle === textStyle;
@@ -2058,6 +2626,9 @@
     object.annotationSize = markerSize();
     object.annotationStyle = annotationStyle;
     object.annotationRoughness = annotationRoughness;
+    object.blurStyle = blurStyle;
+    object.blurStrength = blurStrength;
+    captureToolSettings(object.mode);
     rebuildBaseCanvas();
     render();
     scheduleCurrentImageSave();
@@ -2067,7 +2638,9 @@
 
   function snapshot() {
     return {
-      sourceData: sourceCanvas.toDataURL("image/png"),
+      width: canvas.width,
+      height: canvas.height,
+      layers: cloneImageLayers(),
       objects: clonePlacedObjects(),
     };
   }
@@ -2075,12 +2648,37 @@
   function restoreSnapshot(documentSnapshot) {
     isRestoring = true;
     activeObjectId = null;
+    activeImageLayerId = null;
     updateControls();
+    if (Array.isArray(documentSnapshot.layers)) {
+      canvas.width = documentSnapshot.width;
+      canvas.height = documentSnapshot.height;
+      sourceCanvas.width = documentSnapshot.width;
+      sourceCanvas.height = documentSnapshot.height;
+      baseCanvas.width = documentSnapshot.width;
+      baseCanvas.height = documentSnapshot.height;
+      imageLayers = cloneImageLayers(documentSnapshot.layers);
+      placedObjects = clonePlacedObjects(documentSnapshot.objects || []);
+      rebuildBaseCanvas();
+      selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+      if (matchImageRatio) syncOutputToSourceSize();
+      fitView({ notify: false });
+      isRestoring = false;
+      renderLayers();
+      updatePresentationUI();
+      updateControls();
+      render();
+      scheduleCurrentImageSave();
+      return;
+    }
     const image = new Image();
     image.onload = () => {
       sourceCanvas.width = image.naturalWidth;
       sourceCanvas.height = image.naturalHeight;
       sourceContext.drawImage(image, 0, 0);
+      imageLayers = [createImageLayer(image, null, "Restored image")];
       baseCanvas.width = image.naturalWidth;
       baseCanvas.height = image.naturalHeight;
       canvas.width = image.naturalWidth;
@@ -2093,6 +2691,7 @@
       if (matchImageRatio) syncOutputToSourceSize();
       fitView({ notify: false });
       isRestoring = false;
+      renderLayers();
       updatePresentationUI();
       updateControls();
       render();
@@ -2128,6 +2727,8 @@
       annotationSize: markerSize(),
       annotationStyle,
       annotationRoughness,
+      blurStyle,
+      blurStrength,
     };
     if (["arrow", "line"].includes(mode)) {
       const { start, end } = resolvedArrowPoints();
@@ -2169,6 +2770,7 @@
     scheduleCurrentImageSave();
     showToast({
       mask: "Mask applied.",
+      blur: `${capitalize(blurStyle)} blur applied.`,
       text: "Text placed.",
       circle: "Circle placed.",
       arrow: "Arrow placed.",
@@ -2177,7 +2779,7 @@
   }
 
   function cropToSelection() {
-    if (!selection || elements.cropButton.disabled) return;
+    if (!selection || selection.width < 2 || selection.height < 2) return;
     const left = Math.max(0, Math.floor(selection.x));
     const top = Math.max(0, Math.floor(selection.y));
     const right = Math.min(baseCanvas.width, Math.ceil(selection.x + selection.width));
@@ -2191,10 +2793,7 @@
     }
 
     rememberHistoryStep();
-    const cropped = document.createElement("canvas");
-    cropped.width = width;
-    cropped.height = height;
-    cropped.getContext("2d").drawImage(sourceCanvas, left, top, width, height, 0, 0, width, height);
+    imageLayers = imageLayers.map((layer) => ({ ...layer, x: layer.x - left, y: layer.y - top }));
     placedObjects = placedObjects
       .filter((object) => {
         const bounds = objectBounds(object);
@@ -2217,12 +2816,12 @@
       });
     sourceCanvas.width = width;
     sourceCanvas.height = height;
-    sourceContext.drawImage(cropped, 0, 0);
     baseCanvas.width = width;
     baseCanvas.height = height;
     canvas.width = width;
     canvas.height = height;
     activeObjectId = null;
+    activeImageLayerId = null;
     selection = null;
     arrowStart = null;
     arrowEnd = null;
@@ -2230,6 +2829,7 @@
     if (matchImageRatio) syncOutputToSourceSize();
     fitView({ notify: false });
     updatePresentationUI();
+    renderLayers();
     updateControls();
     render();
     scheduleCurrentImageSave();
@@ -2255,12 +2855,15 @@
   function clearSelection() {
     commitPendingSettingsHistory();
     activeObjectId = null;
+    activeImageLayerId = null;
     objectInteraction = null;
+    imageLayerInteraction = null;
     selectionInteraction = null;
     selection = null;
     arrowStart = null;
     arrowEnd = null;
     updateControls();
+    renderLayers();
     render();
   }
 
@@ -2335,11 +2938,14 @@
     const verticalPadding = output.height * paddingRatio;
     const availableWidth = Math.max(1, output.width - horizontalPadding * 2);
     const availableHeight = Math.max(1, output.height - verticalPadding * 2);
-    const scale = Math.min(availableWidth / baseCanvas.width, availableHeight / baseCanvas.height);
+    const reflectionRatio = reflectionEnabled ? 0.2 : 0;
+    const scale = Math.min(availableWidth / baseCanvas.width, availableHeight / (baseCanvas.height * (1 + reflectionRatio)));
     const imageWidth = baseCanvas.width * scale;
     const imageHeight = baseCanvas.height * scale;
+    const reflectionHeight = imageHeight * reflectionRatio;
+    const reflectionGap = reflectionEnabled ? Math.max(3, imageHeight * 0.018) : 0;
     const imageX = (output.width - imageWidth) / 2;
-    const imageY = (output.height - imageHeight) / 2;
+    const imageY = (output.height - imageHeight - reflectionHeight - reflectionGap) / 2;
     const radius = Number(elements.cornerRadius.value);
     const shadowUnit = Math.min(output.width, output.height);
 
@@ -2359,6 +2965,26 @@
     outputContext.clip();
     outputContext.drawImage(baseCanvas, imageX, imageY, imageWidth, imageHeight);
     outputContext.restore();
+
+    if (reflectionEnabled && reflectionHeight >= 1) {
+      const reflection = document.createElement("canvas");
+      reflection.width = Math.max(1, Math.ceil(imageWidth));
+      reflection.height = Math.max(1, Math.ceil(reflectionHeight));
+      const reflectionContext = reflection.getContext("2d");
+      reflectionContext.imageSmoothingEnabled = true;
+      reflectionContext.imageSmoothingQuality = "high";
+      reflectionContext.translate(0, imageHeight);
+      reflectionContext.scale(1, -1);
+      reflectionContext.drawImage(baseCanvas, 0, 0, imageWidth, imageHeight);
+      reflectionContext.setTransform(1, 0, 0, 1, 0, 0);
+      reflectionContext.globalCompositeOperation = "destination-in";
+      const fade = reflectionContext.createLinearGradient(0, 0, 0, reflection.height);
+      fade.addColorStop(0, "rgba(255, 255, 255, 0.34)");
+      fade.addColorStop(1, "rgba(255, 255, 255, 0)");
+      reflectionContext.fillStyle = fade;
+      reflectionContext.fillRect(0, 0, reflection.width, reflection.height);
+      outputContext.drawImage(reflection, imageX, imageY + imageHeight + reflectionGap, imageWidth, reflectionHeight);
+    }
     return output;
   }
 
@@ -2407,26 +3033,27 @@
     event.preventDefault();
     elements.canvasWrap.classList.remove("is-dragging");
     elements.pasteCard.classList.remove("is-dragging");
-    const file = [...event.dataTransfer.files].find(isImageFile);
-    if (file) loadImageFile(file);
+    const files = [...event.dataTransfer.files].filter(isImageFile);
+    if (files.length) loadImageFiles(files, { replace: !imageLoaded });
     else showToast("Drop an image file here.");
   }
 
-  [elements.replaceImageButton, elements.pasteCard, elements.emptyState].forEach((button) => {
-    button.addEventListener("click", chooseFile);
-  });
+  elements.replaceImageButton.addEventListener("click", () => chooseFile("replace"));
+  elements.pasteCard.addEventListener("click", () => chooseFile(imageLoaded ? "add" : "replace"));
+  elements.emptyState.addEventListener("click", () => chooseFile("replace"));
+  elements.addLayerButton.addEventListener("click", () => chooseFile("add"));
 
   elements.fileInput.addEventListener("change", () => {
-    if (elements.fileInput.files[0]) loadImageFile(elements.fileInput.files[0]);
+    if (elements.fileInput.files.length) loadImageFiles(elements.fileInput.files, { replace: filePickerIntent === "replace" });
     elements.fileInput.value = "";
   });
 
   document.addEventListener("paste", (event) => {
-    const imageItem = [...event.clipboardData.items].find((item) => item.type.startsWith("image/"));
-    if (!imageItem) return;
+    const imageItems = [...event.clipboardData.items].filter((item) => item.type.startsWith("image/"));
+    if (!imageItems.length) return;
     event.preventDefault();
-    const blob = imageItem.getAsFile();
-    if (blob) loadImageFile(blob);
+    const blobs = imageItems.map((item) => item.getAsFile()).filter(Boolean);
+    if (blobs.length) loadImageFiles(blobs, { replace: !imageLoaded });
   });
 
   window.addEventListener("dragover", (event) => {
@@ -2482,15 +3109,32 @@
     canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(event.pointerId);
     const point = canvasPoint(event);
+    if (mode === "arrange") {
+      const layerHandle = imageLayerHandleAtPoint(point);
+      const layer = layerHandle ? activeImageLayer() : findImageLayerAtPoint(point);
+      if (layer) {
+        if (layer.id !== activeImageLayerId) selectImageLayer(layer);
+        beginImageLayerInteraction(layer, point, layerHandle);
+        canvas.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+      } else {
+        activeImageLayerId = null;
+        selection = null;
+        renderLayers();
+        updateControls();
+        render();
+      }
+      return;
+    }
     const selectedHandle = activeHandleAtPoint(point);
-    if (activeObject() && selectedHandle) {
+    if (mode !== "crop" && activeObject() && selectedHandle) {
       beginObjectInteraction(activeObject(), point, selectedHandle);
       canvas.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
       return;
     }
 
-    const pendingHandle = selectionHandleAtPoint(point);
+    const pendingHandle = mode === "crop" ? null : selectionHandleAtPoint(point);
     if (pendingHandle) {
       beginSelectionInteraction(point, pendingHandle);
       canvas.style.cursor = ["nw", "se"].includes(pendingHandle) ? "nwse-resize"
@@ -2499,7 +3143,7 @@
       return;
     }
 
-    const hitObject = findObjectAtPoint(point);
+    const hitObject = mode === "crop" ? null : findObjectAtPoint(point);
     if (hitObject) {
       if (hitObject.id !== activeObjectId) selectPlacedObject(hitObject);
       beginObjectInteraction(hitObject, point, activeHandleAtPoint(point));
@@ -2508,7 +3152,7 @@
       return;
     }
 
-    if (selectionContainsPoint(point)) {
+    if (mode !== "crop" && selectionContainsPoint(point)) {
       beginSelectionInteraction(point);
       canvas.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
@@ -2530,6 +3174,10 @@
 
   canvas.addEventListener("pointermove", (event) => {
     const currentPoint = canvasPoint(event);
+    if (imageLayerInteraction) {
+      updateImageLayerInteraction(currentPoint);
+      return;
+    }
     if (objectInteraction) {
       updateObjectInteraction(currentPoint);
       return;
@@ -2541,10 +3189,13 @@
     }
 
     if (!isSelecting) {
-      const handle = activeHandleAtPoint(currentPoint) || selectionHandleAtPoint(currentPoint);
+      const handle = mode === "arrange"
+        ? imageLayerHandleAtPoint(currentPoint)
+        : activeHandleAtPoint(currentPoint) || selectionHandleAtPoint(currentPoint);
       if (["nw", "se"].includes(handle)) canvas.style.cursor = "nwse-resize";
       else if (["ne", "sw"].includes(handle)) canvas.style.cursor = "nesw-resize";
       else if (["start", "end", "control"].includes(handle)) canvas.style.cursor = "grab";
+      else if (mode === "arrange" && findImageLayerAtPoint(currentPoint)) canvas.style.cursor = "move";
       else if (selectionContainsPoint(currentPoint)) canvas.style.cursor = "move";
       else if (findObjectAtPoint(currentPoint)) canvas.style.cursor = "move";
       else canvas.style.cursor = "crosshair";
@@ -2558,6 +3209,13 @@
   });
 
   function finishSelection(event) {
+    if (imageLayerInteraction) {
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      document.body.style.userSelect = "";
+      finishImageLayerInteraction();
+      canvas.style.cursor = "crosshair";
+      return;
+    }
     if (objectInteraction) {
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
       document.body.style.userSelect = "";
@@ -2569,7 +3227,7 @@
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
       document.body.style.userSelect = "";
       finishSelectionInteraction();
-      if (!requireEnterToApply && event.type === "pointerup") applyCurrentTool();
+      if (event.type === "pointerup") applyCurrentTool();
       canvas.style.cursor = "crosshair";
       return;
     }
@@ -2588,7 +3246,10 @@
     }
     updateControls();
     render();
-    if (selection && !requireEnterToApply && event.type === "pointerup") applyCurrentTool();
+    if (selection && event.type === "pointerup") {
+      if (mode === "crop") cropToSelection();
+      else applyCurrentTool();
+    }
     if (selection && mode === "text") elements.replacementText.focus({ preventScroll: true });
     else if (selection) canvas.focus({ preventScroll: true });
   }
@@ -2599,6 +3260,33 @@
     if (!imageLoaded) return;
 
     const selectedObject = activeObject();
+    const selectedLayer = mode === "arrange" ? activeImageLayer() : null;
+    if (selectedLayer && ["Delete", "Backspace"].includes(event.key)) {
+      event.preventDefault();
+      deleteImageLayer(selectedLayer.id);
+      return;
+    }
+
+    if (selectedLayer && event.key.startsWith("Arrow")) {
+      event.preventDefault();
+      const step = event.altKey ? 1 : 10;
+      const [deltaX, deltaY] = {
+        ArrowLeft: [-step, 0],
+        ArrowRight: [step, 0],
+        ArrowUp: [0, -step],
+        ArrowDown: [0, step],
+      }[event.key];
+      rememberHistoryStep();
+      selectedLayer.x += deltaX;
+      selectedLayer.y += deltaY;
+      selection = { x: selectedLayer.x, y: selectedLayer.y, width: selectedLayer.width, height: selectedLayer.height };
+      rebuildBaseCanvas();
+      renderLayers();
+      updateControls();
+      render();
+      scheduleCurrentImageSave();
+      return;
+    }
     if (selectedObject && ["Delete", "Backspace"].includes(event.key)) {
       event.preventDefault();
       deleteActiveObject();
@@ -2630,14 +3318,7 @@
       return;
     }
 
-    if (event.key === "Enter" && selection && !selectedObject) {
-      event.preventDefault();
-      event.stopPropagation();
-      applyCurrentTool();
-      return;
-    }
-
-    if ((event.key === "Enter" || event.key === " ") && !selection) {
+    if (event.key === " " && !selection && !["arrange", "crop"].includes(mode)) {
       event.preventDefault();
       selection = {
         x: canvas.width * 0.25,
@@ -2685,11 +3366,14 @@
     render();
   });
 
+  elements.arrangeModeButton.addEventListener("click", () => setMode("arrange"));
   elements.maskModeButton.addEventListener("click", () => setMode("mask"));
+  elements.blurModeButton.addEventListener("click", () => setMode("blur"));
   elements.textModeButton.addEventListener("click", () => setMode("text"));
   elements.circleModeButton.addEventListener("click", () => setMode("circle"));
   elements.arrowModeButton.addEventListener("click", () => setMode("arrow"));
   elements.lineModeButton.addEventListener("click", () => setMode("line"));
+  elements.cropModeButton.addEventListener("click", () => setMode("crop"));
   elements.patternButtons.forEach((button) => {
     button.addEventListener("click", () => {
       setPattern(button.dataset.patchPattern);
@@ -2700,14 +3384,28 @@
   elements.annotationStyleButtons.forEach((button) => {
     button.addEventListener("click", () => setAnnotationStyle(button.dataset.annotationStyle));
   });
-  elements.applyButton.addEventListener("click", applyCurrentTool);
-  elements.requireEnterToApply.addEventListener("change", () => {
-    requireEnterToApply = elements.requireEnterToApply.checked;
-    savePreference(STORAGE_KEYS.requireEnterToApply, String(requireEnterToApply));
-    updatePlacementPreferenceUI();
-    showToast(requireEnterToApply ? "New tools now wait for Enter." : "New tools now apply when you release.");
+  elements.blurStyleButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      blurStyle = button.dataset.blurStyle;
+      elements.blurStyleButtons.forEach((styleButton) => {
+        const active = styleButton.dataset.blurStyle === blurStyle;
+        styleButton.classList.toggle("is-active", active);
+        styleButton.setAttribute("aria-pressed", String(active));
+      });
+      elements.blurStrengthValue.value = blurStyle === "pixelize" ? `${blurStrength} px` : `${blurStrength}`;
+      captureToolSettings("blur");
+      syncActiveObjectFromControls();
+      if (!activeObject()) render();
+    });
   });
-  elements.cropButton.addEventListener("click", cropToSelection);
+  elements.blurStrength.addEventListener("input", () => {
+    blurStrength = clampNumber(elements.blurStrength.value, 2, 40, 14);
+    elements.blurStrengthValue.value = blurStyle === "pixelize" ? `${blurStrength} px` : `${blurStrength}`;
+    captureToolSettings("blur");
+    syncActiveObjectFromControls();
+    if (!activeObject()) render();
+  });
+  elements.applyButton.addEventListener("click", applyCurrentTool);
   elements.clearSelectionButton.addEventListener("click", clearSelection);
   elements.undoButton.addEventListener("click", undo);
   elements.redoButton.addEventListener("click", redo);
@@ -2722,6 +3420,12 @@
     savePreference(STORAGE_KEYS.frameEnabled, String(frameEnabled));
     updatePresentationUI();
     showToast(frameEnabled ? "Share canvas enabled." : "Share canvas removed.");
+  });
+  elements.reflectionEnabled.addEventListener("change", () => {
+    reflectionEnabled = elements.reflectionEnabled.checked;
+    savePreference(STORAGE_KEYS.reflectionEnabled, String(reflectionEnabled));
+    updatePresentationUI();
+    showToast(reflectionEnabled ? "Reflection added to share canvas." : "Reflection removed.");
   });
   elements.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setAspectPreset(button));
@@ -2776,24 +3480,28 @@
   elements.backgroundColor.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.backgroundColor, elements.backgroundColor.value);
+    captureToolSettings(mode);
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
   elements.textColor.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.textColor, elements.textColor.value);
+    captureToolSettings("text");
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
   elements.annotationColor.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.annotationColor, elements.annotationColor.value);
+    captureToolSettings(mode);
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
   elements.annotationSize.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.annotationSize, elements.annotationSize.value);
+    captureToolSettings(mode);
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
@@ -2806,17 +3514,20 @@
   elements.fontSize.addEventListener("input", () => {
     updatePreferenceLabels();
     savePreference(STORAGE_KEYS.fontSize, elements.fontSize.value);
+    captureToolSettings("text");
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
   elements.autoTextSize.addEventListener("change", () => {
     savePreference(STORAGE_KEYS.autoTextSize, String(elements.autoTextSize.checked));
+    captureToolSettings("text");
     updateFontSizeUI();
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
   elements.replacementText.addEventListener("input", () => {
     updateFontSizeUI();
+    captureToolSettings("text");
     syncActiveObjectFromControls();
     if (!activeObject()) render();
   });
@@ -2830,13 +3541,6 @@
     elements.autoTextSize,
     elements.replacementText,
   ].forEach((input) => input.addEventListener("change", commitPendingSettingsHistory));
-  elements.replacementText.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      applyCurrentTool();
-    }
-  });
-
   document.addEventListener("keydown", (event) => {
     const modifier = event.metaKey || event.ctrlKey;
     if (
@@ -2855,18 +3559,6 @@
     }
     if (event.key === "Escape" && selection) {
       clearSelection();
-      return;
-    }
-    if (
-      event.key === "Enter" &&
-      selection &&
-      !event.defaultPrevented &&
-      !modifier &&
-      !event.target.matches("button, input, textarea, select") &&
-      !event.target.closest(".presentation-section")
-    ) {
-      event.preventDefault();
-      applyCurrentTool();
       return;
     }
     if (!modifier || event.target.matches("input, textarea, select")) return;
