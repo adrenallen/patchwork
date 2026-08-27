@@ -251,6 +251,12 @@ canvas:focus-visible {
   margin-bottom: 11px;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .step-label {
   font-family: var(--utility);
   font-size: 11px;
@@ -266,6 +272,11 @@ canvas:focus-visible {
   color: var(--blue-dark);
   font-size: 12px;
   font-weight: 650;
+}
+
+.text-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .paste-card {

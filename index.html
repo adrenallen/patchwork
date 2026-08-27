@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%2314213d%22/><rect x=%2216%22 y=%2216%22 width=%228%22 height=%228%22 fill=%22%2378a3ff%22/></svg>" />
-    <link rel="stylesheet" href="styles.css?v=20260827.2" />
+    <link rel="stylesheet" href="styles.css?v=20260827.3" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -35,7 +35,10 @@
           <section class="tool-section source-section">
             <div class="section-heading">
               <span class="step-label">Image</span>
-              <button class="text-button" id="replaceImageButton" type="button">Replace</button>
+              <span class="section-actions">
+                <button class="text-button" id="newCanvasButton" type="button" disabled>New canvas</button>
+                <button class="text-button" id="replaceImageButton" type="button">Replace</button>
+              </span>
             </div>
             <button class="paste-card" id="pasteCard" type="button">
               <span class="paste-icon" aria-hidden="true">
@@ -261,7 +264,7 @@
 
               <label class="match-ratio-control reflection-control" for="reflectionEnabled">
                 <input id="reflectionEnabled" type="checkbox" />
-                <span><strong>Reflection</strong><small>Adds a soft mirrored fade below the image.</small></span>
+                <span><strong>Reflection</strong><small>Mirrors the combined visible image layout once.</small></span>
               </label>
             </div>
           </section>
@@ -345,6 +348,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260827.2"></script>
+    <script src="app.js?v=20260827.3"></script>
   </body>
 </html>
