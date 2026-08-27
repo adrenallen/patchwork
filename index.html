@@ -161,6 +161,18 @@
               <span id="applyButtonLabel">Apply mask</span>
               <span aria-hidden="true">↵</span>
             </button>
+
+            <div class="placement-preference">
+              <span class="placement-preference-copy">
+                <strong>Require Enter to apply</strong>
+                <small>Pause after drawing so you can adjust the box before placing it.</small>
+              </span>
+              <label class="switch-control" for="requireEnterToApply">
+                <span id="requireEnterToggleLabel">Off</span>
+                <input id="requireEnterToApply" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"><span></span></span>
+              </label>
+            </div>
           </section>
 
           <section class="presentation-section" aria-label="Share canvas settings">
@@ -302,7 +314,7 @@
               <span>Then drag over anything you want to cover.</span>
             </button>
             <div class="frame-preview" id="framePreview" hidden>
-              <canvas id="editorCanvas" aria-label="Image editor. Drag to use the selected tool. Click an existing item to select it, drag it to move, or drag its handles to resize. Lines and arrows have a middle diamond handle for bending. Keyboard users can press Enter to place a new item, arrow keys to move a selected item, and Delete to remove it." hidden></canvas>
+              <canvas id="editorCanvas" aria-label="Image editor. Drag to place the selected tool, or enable Require Enter to confirm placement manually. Drag corner handles to resize a new or selected item. Click an existing item to select it, drag it to move it, and use the middle diamond handle to bend lines and arrows. Keyboard users can press Enter to place a pending item, arrow keys to move a selected item, and Delete to remove it." hidden></canvas>
             </div>
           </div>
         </section>

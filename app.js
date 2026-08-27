@@ -43,6 +43,8 @@
     autoTextSize: document.querySelector("#autoTextSize"),
     applyButton: document.querySelector("#applyButton"),
     applyButtonLabel: document.querySelector("#applyButtonLabel"),
+    requireEnterToApply: document.querySelector("#requireEnterToApply"),
+    requireEnterToggleLabel: document.querySelector("#requireEnterToggleLabel"),
     undoButton: document.querySelector("#undoButton"),
     redoButton: document.querySelector("#redoButton"),
     cropButton: document.querySelector("#cropButton"),
@@ -99,6 +101,7 @@
     gradient: "patchwork.gradient",
     framePadding: "patchwork.framePadding",
     cornerRadius: "patchwork.cornerRadius",
+    requireEnterToApply: "patchwork.requireEnterToApply",
   };
 
   const GRADIENTS = {
@@ -131,6 +134,7 @@
   let aspectPreset = "square";
   let matchImageRatio = true;
   let gradientName = "dusk";
+  let requireEnterToApply = false;
   let selection = null;
   let dragStart = null;
   let arrowStart = null;
@@ -146,6 +150,7 @@
   let placedObjects = [];
   let activeObjectId = null;
   let objectInteraction = null;
+  let selectionInteraction = null;
   let pendingSettingsHistory = null;
   let settingsHistoryTimer = null;
   let history = [];
@@ -417,13 +422,16 @@
     if (matchImageRatio) aspectPreset = "source";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
+    requireEnterToApply = readPreference(STORAGE_KEYS.requireEnterToApply, "false") === "true";
     elements.frameEnabled.checked = frameEnabled;
     elements.matchImageRatio.checked = matchImageRatio;
+    elements.requireEnterToApply.checked = requireEnterToApply;
     elements.outputWidth.value = String(clampNumber(readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
     elements.outputHeight.value = String(clampNumber(readPreference(STORAGE_KEYS.outputHeight, "1600"), 1, 12000, 1600));
     elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 24, 10));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
     updatePresentationUI();
+    updatePlacementPreferenceUI();
     loadRecentPatches();
     updatePreferenceLabels();
   }
@@ -485,6 +493,16 @@
         : "Custom size · pixels";
     }
     updateFramePreview();
+  }
+
+  function updatePlacementPreferenceUI() {
+    elements.requireEnterToApply.checked = requireEnterToApply;
+    elements.requireEnterToggleLabel.textContent = requireEnterToApply ? "On" : "Off";
+    if (imageLoaded) {
+      elements.workspaceTip.textContent = requireEnterToApply
+        ? "Drag to mark · resize · press Enter to apply"
+        : "Drag to place · click an item to edit";
+    }
   }
 
   function setAspectPreset(button) {
@@ -867,7 +885,11 @@
     setAnnotationStyle(preset.annotationStyle || "clean");
     setMode(preset.mode || "mask");
     if (selection && preset.mode !== "text") canvas.focus({ preventScroll: true });
-    showToast(selection ? "Recent tool loaded. Press Enter to place it." : "Recent tool loaded. Drag to place it.");
+    showToast(selection
+      ? "Recent tool loaded. Press Enter to place it."
+      : requireEnterToApply
+        ? "Recent tool loaded. Drag, adjust, then press Enter."
+        : "Recent tool loaded. Drag to place it.");
   }
 
   function showToast(message) {
@@ -1014,6 +1036,7 @@
     imageName = name || "pasted-image";
     if (matchImageRatio) syncOutputToSourceSize();
     selection = null;
+    selectionInteraction = null;
     arrowStart = null;
     arrowEnd = null;
     history = [];
@@ -1029,7 +1052,7 @@
     elements.editControls.setAttribute("aria-disabled", "false");
     elements.copyButton.disabled = false;
     elements.downloadButton.disabled = false;
-    elements.workspaceTip.textContent = "Drag to mark · click an item to edit";
+    updatePlacementPreferenceUI();
     updateControls();
     updatePresentationUI();
     render();
@@ -1205,6 +1228,33 @@
     return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
   }
 
+  function selectionHandleAtPoint(point) {
+    if (!selection || activeObject()) return null;
+    const tolerance = viewHitTolerance();
+    if (["arrow", "line"].includes(mode)) {
+      const { start, end } = resolvedArrowPoints();
+      const handles = [["start", start], ["end", end]];
+      return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
+    }
+    const handles = [
+      ["nw", { x: selection.x, y: selection.y }],
+      ["ne", { x: selection.x + selection.width, y: selection.y }],
+      ["se", { x: selection.x + selection.width, y: selection.y + selection.height }],
+      ["sw", { x: selection.x, y: selection.y + selection.height }],
+    ];
+    return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
+  }
+
+  function selectionContainsPoint(point) {
+    if (!selection || activeObject()) return false;
+    if (["arrow", "line"].includes(mode)) {
+      const { start, end } = resolvedArrowPoints();
+      return distanceToSegment(point, start, end) <= viewHitTolerance() + markerSize() / 2;
+    }
+    return point.x >= selection.x && point.x <= selection.x + selection.width
+      && point.y >= selection.y && point.y <= selection.y + selection.height;
+  }
+
   function translatedObject(original, deltaX, deltaY) {
     const translated = { ...original };
     if (["arrow", "line"].includes(translated.mode)) {
@@ -1231,6 +1281,17 @@
       original: { ...object },
       beforeSnapshot: null,
       changed: false,
+    };
+  }
+
+  function beginSelectionInteraction(point, handle = null) {
+    selectionInteraction = {
+      kind: handle ? "resize" : "move",
+      handle,
+      startPoint: { ...point },
+      originalSelection: { ...selection },
+      originalArrowStart: arrowStart ? { ...arrowStart } : null,
+      originalArrowEnd: arrowEnd ? { ...arrowEnd } : null,
     };
   }
 
@@ -1299,6 +1360,42 @@
     render();
   }
 
+  function updateSelectionInteraction(point) {
+    if (!selectionInteraction) return;
+    const original = selectionInteraction.originalSelection;
+    if (selectionInteraction.kind === "move") {
+      const requestedX = point.x - selectionInteraction.startPoint.x;
+      const requestedY = point.y - selectionInteraction.startPoint.y;
+      const deltaX = Math.max(-original.x, Math.min(canvas.width - original.x - original.width, requestedX));
+      const deltaY = Math.max(-original.y, Math.min(canvas.height - original.y - original.height, requestedY));
+      selection = { ...original, x: original.x + deltaX, y: original.y + deltaY };
+      if (selectionInteraction.originalArrowStart && selectionInteraction.originalArrowEnd) {
+        arrowStart = {
+          x: selectionInteraction.originalArrowStart.x + deltaX,
+          y: selectionInteraction.originalArrowStart.y + deltaY,
+        };
+        arrowEnd = {
+          x: selectionInteraction.originalArrowEnd.x + deltaX,
+          y: selectionInteraction.originalArrowEnd.y + deltaY,
+        };
+      }
+    } else if (["arrow", "line"].includes(mode)) {
+      const clampedPoint = {
+        x: Math.max(0, Math.min(canvas.width, point.x)),
+        y: Math.max(0, Math.min(canvas.height, point.y)),
+      };
+      arrowStart = { ...selectionInteraction.originalArrowStart };
+      arrowEnd = { ...selectionInteraction.originalArrowEnd };
+      if (selectionInteraction.handle === "start") arrowStart = clampedPoint;
+      else arrowEnd = clampedPoint;
+      selection = normalizeBox(arrowStart, arrowEnd);
+    } else {
+      selection = boxForResize(original, selectionInteraction.handle, point);
+    }
+    updateControls();
+    render();
+  }
+
   function finishObjectInteraction() {
     if (!objectInteraction) return;
     if (objectInteraction.changed && objectInteraction.beforeSnapshot) {
@@ -1309,6 +1406,12 @@
       scheduleCurrentImageSave();
     }
     objectInteraction = null;
+    updateControls();
+    render();
+  }
+
+  function finishSelectionInteraction() {
+    selectionInteraction = null;
     updateControls();
     render();
   }
@@ -1338,6 +1441,21 @@
     corners.forEach(([x, y]) => {
       targetContext.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
       targetContext.strokeRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+    });
+    targetContext.restore();
+  }
+
+  function drawPendingLineHandles(targetContext) {
+    const displayScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+    const handleSize = Math.max(6, 8 * displayScale);
+    const { start, end } = resolvedArrowPoints();
+    targetContext.save();
+    targetContext.fillStyle = "#2f6fed";
+    targetContext.strokeStyle = "white";
+    targetContext.lineWidth = Math.max(1, displayScale);
+    [start, end].forEach((point) => {
+      targetContext.fillRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+      targetContext.strokeRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
     });
     targetContext.restore();
   }
@@ -1585,7 +1703,10 @@
     if (mode === "circle") drawMarkerCircle(targetContext);
     else if (mode === "arrow") drawMarkerArrow(targetContext);
     else drawMarkerLine(targetContext);
-    if (includeOutline) drawSelectionOutline(targetContext);
+    if (includeOutline) {
+      if (["arrow", "line"].includes(mode)) drawPendingLineHandles(targetContext);
+      else drawSelectionOutline(targetContext);
+    }
   }
 
   function drawCurrentTool(targetContext, includeOutline = false) {
@@ -2039,6 +2160,7 @@
     const object = createPlacedObject();
     placedObjects.push(object);
     activeObjectId = object.id;
+    selectionInteraction = null;
     syncSelectionFromActiveObject();
     rebuildBaseCanvas();
     rememberCurrentPreset();
@@ -2134,6 +2256,7 @@
     commitPendingSettingsHistory();
     activeObjectId = null;
     objectInteraction = null;
+    selectionInteraction = null;
     selection = null;
     arrowStart = null;
     arrowEnd = null;
@@ -2367,10 +2490,26 @@
       return;
     }
 
+    const pendingHandle = selectionHandleAtPoint(point);
+    if (pendingHandle) {
+      beginSelectionInteraction(point, pendingHandle);
+      canvas.style.cursor = ["nw", "se"].includes(pendingHandle) ? "nwse-resize"
+        : ["ne", "sw"].includes(pendingHandle) ? "nesw-resize" : "grabbing";
+      document.body.style.userSelect = "none";
+      return;
+    }
+
     const hitObject = findObjectAtPoint(point);
     if (hitObject) {
       if (hitObject.id !== activeObjectId) selectPlacedObject(hitObject);
       beginObjectInteraction(hitObject, point, activeHandleAtPoint(point));
+      canvas.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+      return;
+    }
+
+    if (selectionContainsPoint(point)) {
+      beginSelectionInteraction(point);
       canvas.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
       return;
@@ -2396,11 +2535,17 @@
       return;
     }
 
+    if (selectionInteraction) {
+      updateSelectionInteraction(currentPoint);
+      return;
+    }
+
     if (!isSelecting) {
-      const handle = activeHandleAtPoint(currentPoint);
+      const handle = activeHandleAtPoint(currentPoint) || selectionHandleAtPoint(currentPoint);
       if (["nw", "se"].includes(handle)) canvas.style.cursor = "nwse-resize";
       else if (["ne", "sw"].includes(handle)) canvas.style.cursor = "nesw-resize";
       else if (["start", "end", "control"].includes(handle)) canvas.style.cursor = "grab";
+      else if (selectionContainsPoint(currentPoint)) canvas.style.cursor = "move";
       else if (findObjectAtPoint(currentPoint)) canvas.style.cursor = "move";
       else canvas.style.cursor = "crosshair";
       return;
@@ -2420,6 +2565,14 @@
       canvas.style.cursor = "crosshair";
       return;
     }
+    if (selectionInteraction) {
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      document.body.style.userSelect = "";
+      finishSelectionInteraction();
+      if (!requireEnterToApply && event.type === "pointerup") applyCurrentTool();
+      canvas.style.cursor = "crosshair";
+      return;
+    }
     if (!isSelecting) return;
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     isSelecting = false;
@@ -2435,6 +2588,7 @@
     }
     updateControls();
     render();
+    if (selection && !requireEnterToApply && event.type === "pointerup") applyCurrentTool();
     if (selection && mode === "text") elements.replacementText.focus({ preventScroll: true });
     else if (selection) canvas.focus({ preventScroll: true });
   }
@@ -2547,6 +2701,12 @@
     button.addEventListener("click", () => setAnnotationStyle(button.dataset.annotationStyle));
   });
   elements.applyButton.addEventListener("click", applyCurrentTool);
+  elements.requireEnterToApply.addEventListener("change", () => {
+    requireEnterToApply = elements.requireEnterToApply.checked;
+    savePreference(STORAGE_KEYS.requireEnterToApply, String(requireEnterToApply));
+    updatePlacementPreferenceUI();
+    showToast(requireEnterToApply ? "New tools now wait for Enter." : "New tools now apply when you release.");
+  });
   elements.cropButton.addEventListener("click", cropToSelection);
   elements.clearSelectionButton.addEventListener("click", clearSelection);
   elements.undoButton.addEventListener("click", undo);
