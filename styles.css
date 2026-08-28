@@ -594,6 +594,51 @@ input[type="color"]::-webkit-color-swatch {
   margin: 3px 0 15px;
 }
 
+.font-family-field {
+  display: grid;
+  gap: 8px;
+  margin: 3px 0 12px;
+}
+
+.font-family-control {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  margin-bottom: 0;
+}
+
+.font-family-button {
+  display: grid;
+  gap: 1px;
+  min-height: 46px;
+  padding: 4px 2px;
+  line-height: 1;
+}
+
+.font-family-button > span {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.font-family-button > small {
+  font: 8px/1 var(--utility);
+  letter-spacing: 0.02em;
+}
+
+.font-family-button[data-text-font="serif"] > span {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.font-family-button[data-text-font="mono"] > span {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.font-family-button[data-text-font="hand"] > span {
+  font-family: "Marker Felt", "Bradley Hand", "Comic Sans MS", cursive;
+  font-size: 18px;
+  font-weight: 400;
+  transform: rotate(-3deg);
+}
+
 .text-style-control {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 0;

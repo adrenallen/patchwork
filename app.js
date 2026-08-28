@@ -49,6 +49,7 @@
     replacementText: document.querySelector("#replacementText"),
     textColor: document.querySelector("#textColor"),
     textColorValue: document.querySelector("#textColorValue"),
+    textFontButtons: [...document.querySelectorAll(".font-family-button")],
     textStyleButtons: [...document.querySelectorAll(".text-style-button")],
     fontSize: document.querySelector("#fontSize"),
     fontSizeValue: document.querySelector("#fontSizeValue"),
@@ -97,6 +98,7 @@
   const STORAGE_KEYS = {
     backgroundColor: "patchwork.backgroundColor",
     textColor: "patchwork.textColor",
+    textFont: "patchwork.textFont",
     textStyle: "patchwork.textStyle",
     fontSize: "patchwork.fontSize",
     autoTextSize: "patchwork.autoTextSize",
@@ -127,6 +129,13 @@
     graphite: { angle: 135, stops: ["#64748b", "#26354b", "#0f172a"] },
   };
 
+  const TEXT_FONTS = {
+    sans: { label: "Sans", family: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+    serif: { label: "Serif", family: 'Georgia, "Times New Roman", serif' },
+    mono: { label: "Mono", family: '"SFMono-Regular", Consolas, "Liberation Mono", monospace' },
+    hand: { label: "Hand", family: '"Marker Felt", "Bradley Hand", "Comic Sans MS", cursive' },
+  };
+
   const IMAGE_DB_NAME = "patchwork-image-history";
   const IMAGE_DB_VERSION = 1;
   const IMAGE_STORE_NAME = "images";
@@ -141,6 +150,7 @@
   let imageLabel = "Pasted image";
   let mode = "mask";
   let pattern = "solid";
+  let textFont = "sans";
   let textStyle = "bold";
   let annotationStyle = "clean";
   let annotationRoughness = 3;
@@ -454,6 +464,7 @@
     const legacyAnnotationSize = clampNumber(readPreference(STORAGE_KEYS.annotationSize, "6"), 2, 28, 6);
     const legacyRoughness = clampNumber(readPreference(STORAGE_KEYS.annotationRoughness, "3"), 1, 5, 3);
     const savedAnnotationStyle = readPreference(STORAGE_KEYS.annotationStyle, "clean");
+    const savedTextFont = readPreference(STORAGE_KEYS.textFont, "sans");
     const savedTextStyle = readPreference(STORAGE_KEYS.textStyle, "bold");
     const savedPattern = readPreference(STORAGE_KEYS.pattern, "solid");
     const legacyPattern = ["solid", "diagonal", "hatch"].includes(savedPattern) ? savedPattern : "solid";
@@ -470,6 +481,7 @@
         pattern: "solid",
         text: "",
         textColor: legacyTextColor,
+        textFont: TEXT_FONTS[savedTextFont] ? savedTextFont : "sans",
         textStyle: ["normal", "bold", "italic"].includes(savedTextStyle) ? savedTextStyle : "bold",
         fontSize: legacyFontSize,
         autoTextSize: legacyAutoTextSize,
@@ -526,6 +538,7 @@
         pattern,
         text: elements.replacementText.value,
         textColor: elements.textColor.value,
+        textFont,
         textStyle,
         fontSize: Number(elements.fontSize.value),
         autoTextSize: elements.autoTextSize.checked,
@@ -562,6 +575,12 @@
       elements.textColor.value = settings.textColor || "#ffffff";
       elements.fontSize.value = String(clampNumber(settings.fontSize, 8, 160, 28));
       elements.autoTextSize.checked = settings.autoTextSize !== false;
+      textFont = TEXT_FONTS[settings.textFont] ? settings.textFont : "sans";
+      elements.textFontButtons.forEach((button) => {
+        const active = button.dataset.textFont === textFont;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
       textStyle = ["normal", "bold", "italic"].includes(settings.textStyle) ? settings.textStyle : "bold";
       elements.textStyleButtons.forEach((button) => {
         const active = button.dataset.textStyle === textStyle;
@@ -901,14 +920,28 @@
     });
   }
 
-  function fontFamily() {
-    return getComputedStyle(document.documentElement).getPropertyValue("--body");
+  function fontFamilyFor(font = textFont) {
+    return (TEXT_FONTS[font] || TEXT_FONTS.sans).family;
   }
 
   function canvasFont(size) {
     const weight = textStyle === "bold" ? 700 : 400;
     const italic = textStyle === "italic" ? "italic " : "";
-    return `${italic}${weight} ${size}px ${fontFamily()}`;
+    return `${italic}${weight} ${size}px ${fontFamilyFor()}`;
+  }
+
+  function setTextFont(nextFont, remember = true) {
+    textFont = TEXT_FONTS[nextFont] ? nextFont : "sans";
+    elements.textFontButtons.forEach((button) => {
+      const isActive = button.dataset.textFont === textFont;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    if (remember) savePreference(STORAGE_KEYS.textFont, textFont);
+    if (remember) captureToolSettings(mode);
+    updateFontSizeUI();
+    syncActiveObjectFromControls();
+    render();
   }
 
   function setTextStyle(nextStyle, remember = true) {
@@ -1016,6 +1049,7 @@
               backgroundColor: preset.backgroundColor || "#111827",
               text: preset.mode === "text" ? String(preset.text || "").trim() : "",
               textColor: preset.textColor || "#ffffff",
+              textFont: TEXT_FONTS[preset.textFont] ? preset.textFont : "sans",
               fontSize: Number(preset.fontSize) || 28,
               autoTextSize: preset.autoTextSize === true,
               textStyle: ["normal", "bold", "italic"].includes(preset.textStyle) ? preset.textStyle : "bold",
@@ -1050,6 +1084,7 @@
       backgroundColor: elements.backgroundColor.value,
       text: mode === "text" ? elements.replacementText.value.trim() : "",
       textColor: elements.textColor.value,
+      textFont,
       textStyle,
       fontSize: Number(elements.fontSize.value),
       autoTextSize: elements.autoTextSize.checked,
@@ -1084,6 +1119,7 @@
       preset.backgroundColor,
       preset.text,
       preset.textColor,
+      preset.textFont,
       preset.textStyle,
       preset.fontSize,
       preset.autoTextSize,
@@ -1138,6 +1174,7 @@
           ? ({ circle: "○", arrow: "↗", line: "╱" }[preset.mode])
           : "";
       if (preset.mode === "text") {
+        swatch.style.fontFamily = fontFamilyFor(preset.textFont);
         swatch.style.fontStyle = preset.textStyle === "italic" ? "italic" : "normal";
         swatch.style.fontWeight = preset.textStyle === "bold" ? "700" : "400";
       } else if (preset.mode === "blur") {
@@ -1157,7 +1194,7 @@
       detail.textContent = isAnnotation
         ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? `Hand drawn · ${roughnessLabel(preset.annotationRoughness)}` : "Clean"}`
         : preset.mode === "text"
-          ? `${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")} · ${capitalize(preset.pattern || "solid")}`
+          ? `${(TEXT_FONTS[preset.textFont] || TEXT_FONTS.sans).label} · ${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")}`
           : preset.mode === "blur"
             ? `${capitalize(preset.blurStyle || "gaussian")} · strength ${preset.blurStrength || 14}`
           : `${(preset.backgroundColor || "#111827").toUpperCase()}`;
@@ -1190,6 +1227,7 @@
         pattern: preset.pattern || "solid",
         text: preset.text || "",
         textColor: preset.textColor || "#ffffff",
+        textFont: TEXT_FONTS[preset.textFont] ? preset.textFont : "sans",
         textStyle: preset.textStyle || "bold",
         fontSize: preset.fontSize || 28,
         autoTextSize: preset.autoTextSize === true,
@@ -2210,53 +2248,83 @@
     targetContext.shadowOffsetY = Math.max(1, size * 0.22);
   }
 
+  function seededSigned(seed) {
+    const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return (value - Math.floor(value)) * 2 - 1;
+  }
+
+  function strokeSmoothPoints(targetContext, points) {
+    if (points.length < 2) return;
+    targetContext.beginPath();
+    targetContext.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const middle = midpoint(points[index], points[index + 1]);
+      targetContext.quadraticCurveTo(points[index].x, points[index].y, middle.x, middle.y);
+    }
+    targetContext.lineTo(points.at(-1).x, points.at(-1).y);
+    targetContext.stroke();
+  }
+
+  function roughEllipsePoints(box, size, roughness, pass = 0) {
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height / 2;
+    const radiusX = Math.max(0.5, box.width / 2 - size / 2);
+    const radiusY = Math.max(0.5, box.height / 2 - size / 2);
+    const amount = clampNumber(roughness, 1, 5, 3);
+    const looseness = (amount - 1) / 4;
+    const gap = 0.16 + amount * 0.052 + pass * 0.018;
+    const gapCenter = -0.48 + pass * 0.035;
+    const startAngle = gapCenter + gap / 2;
+    const endAngle = gapCenter + Math.PI * 2 - gap / 2;
+    const segments = Math.max(24, Math.min(64, Math.round((radiusX + radiusY) / 8) + amount * 2));
+    const seed = centerX * 0.021 + centerY * 0.037 + box.width * 0.013 + box.height * 0.017 + pass * 17.3;
+    const amplitude = Math.min(
+      Math.min(radiusX, radiusY) * 0.16,
+      size * (0.42 + amount * 0.32) + Math.min(Math.min(radiusX, radiusY) * 0.018 * amount, size * 1.8),
+    );
+    const rotation = -0.025 - looseness * 0.065 + pass * 0.018;
+    const cosine = Math.cos(rotation);
+    const sine = Math.sin(rotation);
+
+    return Array.from({ length: segments + 1 }, (_, index) => {
+      const progress = index / segments;
+      const angle = startAngle + (endAngle - startAngle) * progress;
+      const wave = Math.sin(angle * (2.3 + amount * 0.34) + seed) * 0.55
+        + Math.sin(angle * (5.1 + pass * 0.7) - seed * 0.63) * 0.27
+        + seededSigned(seed + index * 1.91) * (0.15 + looseness * 0.2);
+      const radialOffset = amplitude * wave + pass * size * 0.22;
+      const localX = Math.cos(angle) * (radiusX + radialOffset);
+      const localY = Math.sin(angle) * (radiusY + radialOffset * 0.72);
+      return {
+        x: centerX + localX * cosine - localY * sine,
+        y: centerY + localX * sine + localY * cosine,
+      };
+    });
+  }
+
   function drawStyledCircle(targetContext, box, { color, size, style, roughness = 3 }) {
     const centerX = box.x + box.width / 2;
     const centerY = box.y + box.height / 2;
     const radiusX = Math.max(0.5, box.width / 2 - size / 2);
     const radiusY = Math.max(0.5, box.height / 2 - size / 2);
-    const roughnessAmount = clampNumber(roughness, 1, 5, 3);
-    const looseness = (roughnessAmount - 1) / 4;
 
     targetContext.save();
     prepareMarkerContext(targetContext, size, color);
-    targetContext.beginPath();
-    targetContext.ellipse(
-      centerX,
-      centerY,
-      radiusX * (style === "hand" ? 1 + looseness * 0.012 : 1),
-      radiusY * (style === "hand" ? 1 - looseness * 0.008 : 1),
-      style === "hand" ? -0.012 - looseness * 0.05 : 0,
-      0,
-      Math.PI * 2,
-    );
-    targetContext.stroke();
+    if (style !== "hand") {
+      targetContext.beginPath();
+      targetContext.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+      targetContext.stroke();
+      targetContext.restore();
+      return;
+    }
 
-    if (style === "hand") {
-      const wobble = 0.7 + looseness * 2.2;
-      targetContext.shadowColor = "transparent";
-      const passes = [
-        { alpha: 0.5, width: 0.48, x: 0.24, y: -0.17, stretchX: -0.006, stretchY: 0.01, rotation: 0.018, start: 0.08, end: 1.92 },
-        { alpha: 0.29, width: 0.42, x: -0.22, y: 0.18, stretchX: 0.013, stretchY: -0.009, rotation: -0.022, start: 0.62, end: 1.58 },
-        { alpha: 0.2, width: 0.34, x: 0.35, y: 0.25, stretchX: -0.018, stretchY: 0.016, rotation: 0.038, start: 1.05, end: 1.88 },
-      ];
-      const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
-      passes.slice(0, passCount).forEach((pass, index) => {
-        const passStrength = wobble * (1 + index * 0.2);
-        targetContext.globalAlpha = pass.alpha + looseness * 0.05;
-        targetContext.lineWidth = Math.max(1, size * pass.width);
-        targetContext.beginPath();
-        targetContext.ellipse(
-          centerX + size * pass.x * passStrength,
-          centerY + size * pass.y * passStrength,
-          radiusX * (1 + pass.stretchX * passStrength),
-          radiusY * (1 + pass.stretchY * passStrength),
-          pass.rotation * passStrength,
-          Math.PI * pass.start,
-          Math.PI * pass.end,
-        );
-        targetContext.stroke();
-      });
+    const roughnessAmount = clampNumber(roughness, 1, 5, 3);
+    const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
+    for (let pass = 0; pass < passCount; pass += 1) {
+      targetContext.globalAlpha = pass === 0 ? 1 : pass === 1 ? 0.28 : 0.17;
+      targetContext.lineWidth = pass === 0 ? size : Math.max(1, size * (0.48 - pass * 0.08));
+      if (pass > 0) targetContext.shadowColor = "transparent";
+      strokeSmoothPoints(targetContext, roughEllipsePoints(box, size, roughnessAmount, pass));
     }
     targetContext.restore();
   }
@@ -2287,60 +2355,79 @@
     return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   }
 
+  function roughCurvePoints(start, control, end, size, roughness, pass = 0) {
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    const amount = clampNumber(roughness, 1, 5, 3);
+    const looseness = (amount - 1) / 4;
+    const segments = Math.max(10, Math.min(48, Math.round(length / 22) + amount * 3));
+    const seed = start.x * 0.019 + start.y * 0.031 + end.x * 0.023 + end.y * 0.017
+      + control.x * 0.013 + control.y * 0.011 + pass * 19.7;
+    const amplitude = Math.min(
+      length * 0.14,
+      size * (0.55 + amount * 0.42) + Math.min(length * 0.003 * amount, size * 2.4),
+    );
+
+    return Array.from({ length: segments + 1 }, (_, index) => {
+      const progress = index / segments;
+      const point = quadraticPoint(start, control, end, progress);
+      const derivativeX = 2 * (1 - progress) * (control.x - start.x) + 2 * progress * (end.x - control.x);
+      const derivativeY = 2 * (1 - progress) * (control.y - start.y) + 2 * progress * (end.y - control.y);
+      const derivativeLength = Math.hypot(derivativeX, derivativeY) || length || 1;
+      const normalX = -derivativeY / derivativeLength;
+      const normalY = derivativeX / derivativeLength;
+      const envelope = Math.pow(Math.sin(Math.PI * progress), 0.72);
+      const wave = Math.sin(progress * Math.PI * (2.15 + amount * 0.58) + seed) * 0.56
+        + Math.sin(progress * Math.PI * (6.4 + pass * 0.45) - seed * 0.71) * 0.26
+        + seededSigned(seed + index * 2.17) * (0.13 + looseness * 0.22);
+      const passDrift = pass === 0
+        ? 0
+        : Math.sin(Math.PI * progress) * (pass % 2 === 0 ? -1 : 1) * (0.14 + pass * 0.08);
+      const offset = amplitude * envelope * (wave + passDrift);
+      return { x: point.x + normalX * offset, y: point.y + normalY * offset };
+    });
+  }
+
   function drawStyledCurve(targetContext, { start, end, control, color, size, style, roughness = 3, arrowHead }) {
     const deltaX = end.x - start.x;
     const deltaY = end.y - start.y;
     const length = Math.hypot(deltaX, deltaY);
     if (length < 1) return;
 
-    const tangentX = end.x - control.x || deltaX;
-    const tangentY = end.y - control.y || deltaY;
-    const tangentLength = Math.hypot(tangentX, tangentY) || length;
-    const directionX = tangentX / tangentLength;
-    const directionY = tangentY / tangentLength;
-    const normalX = -directionY;
-    const normalY = directionX;
-
     targetContext.save();
     prepareMarkerContext(targetContext, size, color);
-    targetContext.beginPath();
-    targetContext.moveTo(start.x, start.y);
-    targetContext.quadraticCurveTo(control.x, control.y, end.x, end.y);
-    targetContext.stroke();
-
+    let renderedPoints = null;
     if (style === "hand") {
-      const chordNormalX = -deltaY / length;
-      const chordNormalY = deltaX / length;
       const roughnessAmount = clampNumber(roughness, 1, 5, 3);
-      const looseness = (roughnessAmount - 1) / 4;
-      const wobble = Math.max(0.55, size * (0.14 + looseness * 0.34));
-      targetContext.shadowColor = "transparent";
       const passes = [
-        { start: 1, control: -1.7, end: -0.45, alpha: 0.46, width: 0.5 },
-        { start: -0.7, control: 1.35, end: 0.55, alpha: 0.27, width: 0.4 },
-        { start: 0.35, control: -2.3, end: -0.8, alpha: 0.18, width: 0.32 },
+        { alpha: 1, width: 1 },
+        { alpha: 0.29, width: 0.48 },
+        { alpha: 0.17, width: 0.36 },
       ];
       const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
       passes.slice(0, passCount).forEach((pass, index) => {
-        const passWobble = wobble * (1 + index * 0.28);
-        targetContext.globalAlpha = pass.alpha + looseness * 0.05;
+        const points = roughCurvePoints(start, control, end, size, roughnessAmount, index);
+        if (index === 0) renderedPoints = points;
+        targetContext.globalAlpha = pass.alpha;
         targetContext.lineWidth = Math.max(1, size * pass.width);
-        targetContext.beginPath();
-        targetContext.moveTo(
-          start.x + chordNormalX * passWobble * pass.start,
-          start.y + chordNormalY * passWobble * pass.start,
-        );
-        targetContext.quadraticCurveTo(
-          control.x + chordNormalX * passWobble * pass.control,
-          control.y + chordNormalY * passWobble * pass.control,
-          end.x + chordNormalX * passWobble * pass.end,
-          end.y + chordNormalY * passWobble * pass.end,
-        );
-        targetContext.stroke();
+        if (index > 0) targetContext.shadowColor = "transparent";
+        strokeSmoothPoints(targetContext, points);
       });
+    } else {
+      targetContext.beginPath();
+      targetContext.moveTo(start.x, start.y);
+      targetContext.quadraticCurveTo(control.x, control.y, end.x, end.y);
+      targetContext.stroke();
     }
 
     if (arrowHead) {
+      const directionStart = renderedPoints?.at(-2) || control;
+      const tangentX = end.x - directionStart.x || deltaX;
+      const tangentY = end.y - directionStart.y || deltaY;
+      const tangentLength = Math.hypot(tangentX, tangentY) || length;
+      const directionX = tangentX / tangentLength;
+      const directionY = tangentY / tangentLength;
+      const normalX = -directionY;
+      const normalY = directionX;
       const headLength = Math.min(length * 0.38, Math.max(size * 4.2, 16));
       const headWidth = Math.min(length * 0.34, Math.max(size * 2.8, 12));
       const baseX = end.x - directionX * headLength;
@@ -2348,21 +2435,24 @@
       targetContext.shadowColor = "rgba(15, 23, 42, 0.16)";
       targetContext.globalAlpha = 1;
       if (style === "hand") {
+        const roughnessAmount = clampNumber(roughness, 1, 5, 3);
+        const left = { x: baseX + normalX * headWidth / 2, y: baseY + normalY * headWidth / 2 };
+        const right = { x: baseX - normalX * headWidth / 2, y: baseY - normalY * headWidth / 2 };
+        const leftControl = midpoint(left, end);
+        const rightControl = midpoint(end, right);
+        leftControl.x += normalX * size * 0.45;
+        leftControl.y += normalY * size * 0.45;
+        rightControl.x -= normalX * size * 0.38;
+        rightControl.y -= normalY * size * 0.38;
         targetContext.lineWidth = size;
-        targetContext.beginPath();
-        targetContext.moveTo(baseX + normalX * headWidth / 2, baseY + normalY * headWidth / 2);
-        targetContext.lineTo(end.x, end.y);
-        targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
-        targetContext.stroke();
-        if (clampNumber(roughness, 1, 5, 3) >= 4) {
-          const headWobble = size * (0.18 + clampNumber(roughness, 1, 5, 3) * 0.045);
+        strokeSmoothPoints(targetContext, roughCurvePoints(left, leftControl, end, size, roughnessAmount, 7));
+        strokeSmoothPoints(targetContext, roughCurvePoints(end, rightControl, right, size, roughnessAmount, 11));
+        if (roughnessAmount >= 4) {
           targetContext.globalAlpha = 0.3;
           targetContext.lineWidth = Math.max(1, size * 0.48);
-          targetContext.beginPath();
-          targetContext.moveTo(baseX + normalX * (headWidth / 2 + headWobble), baseY + normalY * (headWidth / 2 + headWobble));
-          targetContext.lineTo(end.x - directionX * headWobble, end.y - directionY * headWobble);
-          targetContext.lineTo(baseX - normalX * (headWidth / 2 - headWobble), baseY - normalY * (headWidth / 2 - headWobble));
-          targetContext.stroke();
+          targetContext.shadowColor = "transparent";
+          strokeSmoothPoints(targetContext, roughCurvePoints(left, leftControl, end, size, roughnessAmount, 13));
+          strokeSmoothPoints(targetContext, roughCurvePoints(end, rightControl, right, size, roughnessAmount, 17));
         }
       } else {
         targetContext.beginPath();
@@ -2558,7 +2648,7 @@
   function objectFont(object, size) {
     const weight = object.textStyle === "bold" ? 700 : 400;
     const italic = object.textStyle === "italic" ? "italic " : "";
-    return `${italic}${weight} ${size}px ${fontFamily()}`;
+    return `${italic}${weight} ${size}px ${fontFamilyFor(object.textFont)}`;
   }
 
   function objectFontSize(targetContext, object) {
@@ -2979,6 +3069,12 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
+    textFont = TEXT_FONTS[object.textFont] ? object.textFont : "sans";
+    elements.textFontButtons.forEach((button) => {
+      const isActive = button.dataset.textFont === textFont;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
     textStyle = ["normal", "bold", "italic"].includes(object.textStyle) ? object.textStyle : "bold";
     elements.textStyleButtons.forEach((button) => {
       const isActive = button.dataset.textStyle === textStyle;
@@ -3025,6 +3121,7 @@
     object.backgroundColor = elements.backgroundColor.value;
     object.text = object.mode === "text" ? elements.replacementText.value.trim() : object.text;
     object.textColor = elements.textColor.value;
+    object.textFont = textFont;
     object.textStyle = textStyle;
     object.fontSize = Number(elements.fontSize.value);
     object.autoTextSize = elements.autoTextSize.checked;
@@ -3126,6 +3223,7 @@
       backgroundColor: elements.backgroundColor.value,
       text: mode === "text" ? elements.replacementText.value.trim() : "",
       textColor: elements.textColor.value,
+      textFont,
       textStyle,
       fontSize: Number(elements.fontSize.value),
       autoTextSize: elements.autoTextSize.checked,
@@ -3874,6 +3972,9 @@
   });
   elements.annotationRoughness.addEventListener("input", () => {
     setAnnotationRoughness(elements.annotationRoughness.value);
+  });
+  elements.textFontButtons.forEach((button) => {
+    button.addEventListener("click", () => setTextFont(button.dataset.textFont));
   });
   elements.textStyleButtons.forEach((button) => {
     button.addEventListener("click", () => setTextStyle(button.dataset.textStyle));

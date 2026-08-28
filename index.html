@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%2314213d%22/><rect x=%2216%22 y=%2216%22 width=%228%22 height=%228%22 fill=%22%2378a3ff%22/></svg>" />
-    <link rel="stylesheet" href="styles.css?v=20260827.3" />
+    <link rel="stylesheet" href="styles.css?v=20260828.1" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -136,6 +136,16 @@
                 <div class="color-control">
                   <input id="textColor" type="color" value="#ffffff" />
                   <output id="textColorValue" for="textColor">#FFFFFF</output>
+                </div>
+              </div>
+
+              <div class="font-family-field">
+                <span class="field-label" id="fontFamilyLabel">Font</span>
+                <div class="segmented-control font-family-control" role="group" aria-labelledby="fontFamilyLabel">
+                  <button class="segment font-family-button is-active" type="button" data-text-font="sans" aria-pressed="true"><span aria-hidden="true">Aa</span><small>Sans</small></button>
+                  <button class="segment font-family-button" type="button" data-text-font="serif" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Serif</small></button>
+                  <button class="segment font-family-button" type="button" data-text-font="mono" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Mono</small></button>
+                  <button class="segment font-family-button" type="button" data-text-font="hand" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Hand</small></button>
                 </div>
               </div>
 
@@ -348,6 +358,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260827.3"></script>
+    <script src="app.js?v=20260828.1"></script>
   </body>
 </html>
