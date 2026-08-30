@@ -68,6 +68,8 @@
     smartTextWeight: document.querySelector("#smartTextWeight"),
     smartTextSizeScale: document.querySelector("#smartTextSizeScale"),
     smartTextSizeScaleValue: document.querySelector("#smartTextSizeScaleValue"),
+    smartTextRotation: document.querySelector("#smartTextRotation"),
+    smartTextRotationValue: document.querySelector("#smartTextRotationValue"),
     smartTextStyleHint: document.querySelector("#smartTextStyleHint"),
     smartTextMatchCount: document.querySelector("#smartTextMatchCount"),
     smartTextToggleMatches: document.querySelector("#smartTextToggleMatches"),
@@ -162,6 +164,7 @@
     smartTextFont: "patchwork.smartTextFont",
     smartTextWeight: "patchwork.smartTextWeight",
     smartTextSizeScale: "patchwork.smartTextSizeScale",
+    smartTextRotation: "patchwork.smartTextRotation",
     smartTextBlurStyle: "patchwork.smartTextBlurStyle",
     smartTextBlurStrength: "patchwork.smartTextBlurStrength",
     smartTextMaskColor: "patchwork.smartTextMaskColor",
@@ -207,6 +210,7 @@
   let smartTextFont = "auto";
   let smartTextWeight = "auto";
   let smartTextSizeScale = 100;
+  let smartTextRotation = 0;
   let smartTextBlurStyle = "gaussian";
   let smartTextBlurStrength = 14;
   let smartTextMaskPattern = "solid";
@@ -243,6 +247,7 @@
   let imageLayerInteraction = null;
   let filePickerIntent = "replace";
   let activeObjectId = null;
+  let selectedObjectIds = new Set();
   let objectInteraction = null;
   let selectionInteraction = null;
   let pendingSettingsHistory = null;
@@ -594,7 +599,8 @@
     const savedSmartWeight = readPreference(STORAGE_KEYS.smartTextWeight, "auto");
     smartTextFont = ["auto", ...Object.keys(TEXT_FONTS)].includes(savedSmartFont) ? savedSmartFont : "auto";
     smartTextWeight = ["auto", "normal", "bold"].includes(savedSmartWeight) ? savedSmartWeight : "auto";
-    smartTextSizeScale = clampNumber(readPreference(STORAGE_KEYS.smartTextSizeScale, "100"), 60, 140, 100);
+    smartTextSizeScale = clampNumber(readPreference(STORAGE_KEYS.smartTextSizeScale, "100"), 1, 200, 100);
+    smartTextRotation = clampNumber(readPreference(STORAGE_KEYS.smartTextRotation, "0"), -180, 180, 0);
     smartTextBlurStyle = ["gaussian", "pixelize"].includes(readPreference(STORAGE_KEYS.smartTextBlurStyle, "gaussian"))
       ? readPreference(STORAGE_KEYS.smartTextBlurStyle, "gaussian")
       : "gaussian";
@@ -605,6 +611,7 @@
     elements.smartTextFont.value = smartTextFont;
     elements.smartTextWeight.value = smartTextWeight;
     elements.smartTextSizeScale.value = String(smartTextSizeScale);
+    elements.smartTextRotation.value = String(smartTextRotation);
     elements.smartTextBlurStrength.value = String(smartTextBlurStrength);
     elements.smartTextMaskColor.value = readPreference(STORAGE_KEYS.smartTextMaskColor, legacyBackground);
     updateSmartTextOptionUI();
@@ -1029,6 +1036,8 @@
     elements.smartTextWeight.value = smartTextWeight;
     elements.smartTextSizeScale.value = String(smartTextSizeScale);
     elements.smartTextSizeScaleValue.value = `${smartTextSizeScale}%`;
+    elements.smartTextRotation.value = String(smartTextRotation);
+    elements.smartTextRotationValue.value = `${smartTextRotation}°`;
     elements.smartTextBlurStrength.value = String(smartTextBlurStrength);
     elements.smartTextBlurStrengthValue.value = smartTextBlurStyle === "pixelize"
       ? `${smartTextBlurStrength} px`
@@ -1081,7 +1090,8 @@
     const weight = requestedWeight === "auto"
       ? inferFontWeight(match.fontName, appearance.foregroundCoverage)
       : requestedWeight;
-    const scale = clampNumber(match.sizeScaleOverride ?? smartTextSizeScale, 60, 140, 100);
+    const scale = clampNumber(match.sizeScaleOverride ?? smartTextSizeScale, 1, 200, 100);
+    const rotation = clampNumber(match.rotationOverride ?? smartTextRotation, -180, 180, 0);
     const sourceHeight = Math.max(1, match.bbox.y1 - match.bbox.y0);
     const probeSize = 100;
     baseContext.save();
@@ -1090,13 +1100,14 @@
     baseContext.restore();
     const probeInkHeight = Math.max(1, (metrics.actualBoundingBoxAscent || probeSize * 0.72)
       + (metrics.actualBoundingBoxDescent || probeSize * 0.2));
-    const fontSize = Math.max(4, Math.min(160, (sourceHeight * probeSize / probeInkHeight) * scale / 100));
-    return { family, weight, scale, fontSize };
+    const fontSize = Math.max(0.5, Math.min(160, (sourceHeight * probeSize / probeInkHeight) * scale / 100));
+    return { family, weight, scale, rotation, fontSize };
   }
 
   function smartTextStyleSummary(match) {
     const style = smartTextResolvedStyle(match);
-    return `${TEXT_FONTS[style.family]?.label || "Sans"} · ${style.weight === "bold" ? "Bold" : "Normal"} · ${Math.round(style.fontSize)} px`;
+    const size = style.fontSize < 10 ? style.fontSize.toFixed(1) : Math.round(style.fontSize);
+    return `${TEXT_FONTS[style.family]?.label || "Sans"} · ${style.weight === "bold" ? "Bold" : "Normal"} · ${size} px · ${style.rotation}°`;
   }
 
   function createSmartTextMatchAdjustment(match, summary) {
@@ -1128,14 +1139,14 @@
     const sizeHeading = document.createElement("span");
     sizeHeading.textContent = "Size";
     const sizeValue = document.createElement("output");
-    const currentScale = clampNumber(match.sizeScaleOverride ?? smartTextSizeScale, 60, 140, 100);
+    const currentScale = clampNumber(match.sizeScaleOverride ?? smartTextSizeScale, 1, 200, 100);
     sizeValue.value = `${currentScale}%`;
     sizeHeading.append(sizeValue);
     const sizeInput = document.createElement("input");
     sizeInput.type = "range";
-    sizeInput.min = "60";
-    sizeInput.max = "140";
-    sizeInput.step = "2";
+    sizeInput.min = "1";
+    sizeInput.max = "200";
+    sizeInput.step = "1";
     sizeInput.value = String(currentScale);
     sizeInput.addEventListener("input", () => {
       match.sizeScaleOverride = Number(sizeInput.value);
@@ -1145,6 +1156,28 @@
     });
     sizeLabel.append(sizeHeading, sizeInput);
 
+    const rotationLabel = document.createElement("label");
+    rotationLabel.className = "smart-text-match-size";
+    const rotationHeading = document.createElement("span");
+    rotationHeading.textContent = "Rotation";
+    const rotationValue = document.createElement("output");
+    const currentRotation = clampNumber(match.rotationOverride ?? smartTextRotation, -180, 180, 0);
+    rotationValue.value = `${currentRotation}°`;
+    rotationHeading.append(rotationValue);
+    const rotationInput = document.createElement("input");
+    rotationInput.type = "range";
+    rotationInput.min = "-180";
+    rotationInput.max = "180";
+    rotationInput.step = "1";
+    rotationInput.value = String(currentRotation);
+    rotationInput.addEventListener("input", () => {
+      match.rotationOverride = Number(rotationInput.value);
+      rotationValue.value = `${rotationInput.value}°`;
+      summary.textContent = smartTextStyleSummary(match);
+      render();
+    });
+    rotationLabel.append(rotationHeading, rotationInput);
+
     const reset = document.createElement("button");
     reset.className = "text-button smart-text-match-reset";
     reset.type = "button";
@@ -1152,9 +1185,10 @@
     reset.addEventListener("click", () => {
       match.weightOverride = null;
       match.sizeScaleOverride = null;
+      match.rotationOverride = null;
       renderSmartTextMatches();
     });
-    adjustment.append(weightLabel, sizeLabel, reset);
+    adjustment.append(weightLabel, sizeLabel, rotationLabel, reset);
     return adjustment;
   }
 
@@ -1232,6 +1266,7 @@
       tuningOpen: false,
       weightOverride: null,
       sizeScaleOverride: null,
+      rotationOverride: null,
     }));
     renderSmartTextMatches();
   }
@@ -1250,7 +1285,7 @@
   function smartTextObject(match, { createId = true } = {}) {
     const appearance = smartTextAppearance(match);
     const previewPadding = smartTextAction === "blur" ? Math.max(1, Math.round(appearance.padding * 0.55)) : appearance.padding;
-    const bounds = paddedBounds(
+    let bounds = paddedBounds(
       match.bbox,
       previewPadding,
       baseCanvas.width,
@@ -1270,6 +1305,26 @@
     }
     const replacing = smartTextAction === "replace";
     const style = smartTextResolvedStyle(match);
+    const replacement = replacing ? elements.smartTextReplacement.value.trim() : "";
+    let textStartX = match.bbox.x0;
+    if (replacing && replacement) {
+      baseContext.save();
+      baseContext.font = `${style.weight === "bold" ? 700 : 400} ${style.fontSize}px ${fontFamilyFor(style.family)}`;
+      const measuredWidth = baseContext.measureText(replacement).width;
+      baseContext.restore();
+      const textPadding = Math.max(1, appearance.padding);
+      const desiredWidth = Math.min(baseCanvas.width, Math.ceil(measuredWidth + textPadding * 2));
+      if (desiredWidth > bounds.width) {
+        const extra = desiredWidth - bounds.width;
+        const growRight = Math.min(extra, baseCanvas.width - bounds.x - bounds.width);
+        const growLeft = Math.min(extra - growRight, bounds.x);
+        bounds = { ...bounds, x: bounds.x - growLeft, width: bounds.width + growRight + growLeft };
+      }
+      textStartX = Math.max(
+        bounds.x + textPadding,
+        Math.min(match.bbox.x0, bounds.x + bounds.width - measuredWidth - textPadding),
+      );
+    }
     const baselineY = match.baseline
       ? (Number(match.baseline.y0) + Number(match.baseline.y1)) / 2
       : match.bbox.y1;
@@ -1278,14 +1333,16 @@
       mode: replacing ? "text" : "mask",
       pattern: smartTextAction === "mask" ? smartTextMaskPattern : "solid",
       backgroundColor: smartTextAction === "mask" ? elements.smartTextMaskColor.value : appearance.backgroundColor,
-      text: replacing ? elements.smartTextReplacement.value.trim() : "",
+      text: replacement,
       textColor: appearance.textColor,
       textFont: style.family,
       textStyle: style.weight,
       fontSize: style.fontSize,
       autoTextSize: false,
-      textInsetRatio: Math.max(0, (match.bbox.x0 - bounds.x) / Math.max(1, bounds.width)),
+      scaleTextOnResize: replacing,
+      textInsetRatio: Math.max(0, (textStartX - bounds.x) / Math.max(1, bounds.width)),
       textBaselineRatio: Math.max(0, Math.min(1, (baselineY - bounds.y) / Math.max(1, bounds.height))),
+      rotation: replacing ? style.rotation : 0,
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
@@ -1299,9 +1356,10 @@
     ensureSmartTextAnalysisIsFresh();
     const matches = selectedSmartTextMatches();
     if (!matches.length || elements.applySmartTextButton.disabled) return;
+    const createdObjects = matches.map((match) => smartTextObject(match));
     rememberHistoryStep();
-    placedObjects.push(...matches.map((match) => smartTextObject(match)));
-    activeObjectId = null;
+    placedObjects.push(...createdObjects);
+    clearSelectedObjects();
     selection = null;
     rebuildBaseCanvas();
     const action = smartTextActionCopy().past;
@@ -1315,7 +1373,17 @@
     updateControls();
     render();
     scheduleCurrentImageSave();
-    showToast(`${action} ${matches.length} text ${matches.length === 1 ? "match" : "matches"}.`);
+    if (smartTextAction === "replace" && createdObjects.length) {
+      selectPlacedObject(createdObjects[0]);
+      selectedObjectIds = new Set(createdObjects.map((object) => object.id));
+      activeObjectId = createdObjects[0].id;
+      syncSelectionFromActiveObject();
+      updateControls();
+      render();
+      showToast(`${action} ${matches.length} text ${matches.length === 1 ? "match" : "matches"}. Replacements are selected; Shift-click to adjust the group.`);
+    } else {
+      showToast(`${action} ${matches.length} text ${matches.length === 1 ? "match" : "matches"}.`);
+    }
   }
 
   function drawSmartTextPreview(targetContext, { drawObjects = true } = {}) {
@@ -1328,7 +1396,15 @@
     targetContext.setLineDash([4 * displayScale, 3 * displayScale]);
     selectedSmartTextMatches().forEach((match) => {
       const object = smartTextObject(match, { createId: false });
+      targetContext.save();
+      if (object.rotation) {
+        const center = rectangularObjectCenter(object);
+        targetContext.translate(center.x, center.y);
+        targetContext.rotate(objectRotationRadians(object));
+        targetContext.translate(-center.x, -center.y);
+      }
       targetContext.strokeRect(object.x, object.y, object.width, object.height);
+      targetContext.restore();
     });
     targetContext.restore();
   }
@@ -1639,7 +1715,7 @@
 
   function reusePreset(preset) {
     commitPendingSettingsHistory();
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = null;
     selection = null;
     arrowStart = null;
@@ -1830,7 +1906,7 @@
     baseCanvas.height = height;
     imageLayers = cloneImageLayers(layers);
     placedObjects = clonePlacedObjects(objects);
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = null;
     rebuildBaseCanvas();
 
@@ -1884,7 +1960,7 @@
     imageName = "pasted-image";
     imageLayers = [];
     placedObjects = [];
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = null;
     selection = null;
     selectionInteraction = null;
@@ -2018,7 +2094,7 @@
     });
     imageLayers.push(layer);
     activeImageLayerId = layer.id;
-    activeObjectId = null;
+    clearSelectedObjects();
     selection = imageLayerBounds(layer);
     rebuildBaseCanvas();
     renderLayers();
@@ -2083,7 +2159,7 @@
 
   function selectImageLayer(layer) {
     commitPendingSettingsHistory();
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = layer.id;
     selection = imageLayerBounds(layer);
     arrowStart = null;
@@ -2220,6 +2296,45 @@
     return Math.hypot(right.x - left.x, right.y - left.y);
   }
 
+  function objectRotationRadians(object) {
+    return Number(object.rotation || 0) * Math.PI / 180;
+  }
+
+  function rectangularObjectCenter(object) {
+    return { x: object.x + object.width / 2, y: object.y + object.height / 2 };
+  }
+
+  function rotatedPoint(point, center, radians) {
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const deltaX = point.x - center.x;
+    const deltaY = point.y - center.y;
+    return {
+      x: center.x + deltaX * cosine - deltaY * sine,
+      y: center.y + deltaX * sine + deltaY * cosine,
+    };
+  }
+
+  function rectangularObjectHandles(object) {
+    const center = rectangularObjectCenter(object);
+    const radians = objectRotationRadians(object);
+    const points = {
+      nw: { x: object.x, y: object.y },
+      ne: { x: object.x + object.width, y: object.y },
+      se: { x: object.x + object.width, y: object.y + object.height },
+      sw: { x: object.x, y: object.y + object.height },
+    };
+    Object.keys(points).forEach((key) => { points[key] = rotatedPoint(points[key], center, radians); });
+    const topMiddle = rotatedPoint({ x: center.x, y: object.y }, center, radians);
+    const rotationDistance = Math.max(18, 24 * toolDisplayScale());
+    points.rotate = {
+      x: topMiddle.x + Math.sin(radians) * rotationDistance,
+      y: topMiddle.y - Math.cos(radians) * rotationDistance,
+    };
+    points.topMiddle = topMiddle;
+    return points;
+  }
+
   function distanceToSegment(point, start, end) {
     const deltaX = end.x - start.x;
     const deltaY = end.y - start.y;
@@ -2248,7 +2363,11 @@
       return curveDistance(point, object) <= viewHitTolerance() + object.annotationSize / 2;
     }
     const bounds = objectBounds(object);
-    return point.x >= bounds.x && point.x <= bounds.x + bounds.width && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+    const localPoint = object.rotation
+      ? rotatedPoint(point, rectangularObjectCenter(object), -objectRotationRadians(object))
+      : point;
+    return localPoint.x >= bounds.x && localPoint.x <= bounds.x + bounds.width
+      && localPoint.y >= bounds.y && localPoint.y <= bounds.y + bounds.height;
   }
 
   function findObjectAtPoint(point) {
@@ -2270,13 +2389,8 @@
       ];
       return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
     }
-    const bounds = objectBounds(object);
-    const handles = [
-      ["nw", { x: bounds.x, y: bounds.y }],
-      ["ne", { x: bounds.x + bounds.width, y: bounds.y }],
-      ["se", { x: bounds.x + bounds.width, y: bounds.y + bounds.height }],
-      ["sw", { x: bounds.x, y: bounds.y + bounds.height }],
-    ];
+    const points = rectangularObjectHandles(object);
+    const handles = ["nw", "ne", "se", "sw", "rotate"].map((handle) => [handle, points[handle]]);
     return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
   }
 
@@ -2440,7 +2554,7 @@
     commitPendingSettingsHistory();
     objectInteraction = {
       objectId: object.id,
-      kind: handle ? "resize" : "move",
+      kind: handle === "rotate" ? "rotate" : handle ? "resize" : "move",
       handle,
       startPoint: { ...point },
       original: { ...object },
@@ -2483,6 +2597,25 @@
     return box;
   }
 
+  function rotatedBoxForResize(original, handle, point) {
+    const points = rectangularObjectHandles(original);
+    const oppositeHandle = { nw: "se", ne: "sw", se: "nw", sw: "ne" }[handle];
+    const opposite = points[oppositeHandle];
+    const radians = objectRotationRadians(original);
+    const widthAxis = { x: Math.cos(radians), y: Math.sin(radians) };
+    const heightAxis = { x: -Math.sin(radians), y: Math.cos(radians) };
+    const delta = { x: point.x - opposite.x, y: point.y - opposite.y };
+    const horizontalSign = handle.includes("e") ? 1 : -1;
+    const verticalSign = handle.includes("s") ? 1 : -1;
+    const width = Math.max(4, horizontalSign * (delta.x * widthAxis.x + delta.y * widthAxis.y));
+    const height = Math.max(4, verticalSign * (delta.x * heightAxis.x + delta.y * heightAxis.y));
+    const center = {
+      x: opposite.x + widthAxis.x * horizontalSign * width / 2 + heightAxis.x * verticalSign * height / 2,
+      y: opposite.y + widthAxis.y * horizontalSign * width / 2 + heightAxis.y * verticalSign * height / 2,
+    };
+    return { x: center.x - width / 2, y: center.y - height / 2, width, height };
+  }
+
   function updateObjectInteraction(point) {
     if (!objectInteraction) return;
     const index = placedObjects.findIndex((object) => object.id === objectInteraction.objectId);
@@ -2497,6 +2630,10 @@
       const deltaX = Math.max(-bounds.x, Math.min(documentWidth() - bounds.x - bounds.width, requestedX));
       const deltaY = Math.max(-bounds.y, Math.min(documentHeight() - bounds.y - bounds.height, requestedY));
       updated = translatedObject(original, deltaX, deltaY);
+    } else if (objectInteraction.kind === "rotate") {
+      const center = rectangularObjectCenter(original);
+      const degrees = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI + 90;
+      updated.rotation = Math.round(((degrees + 180) % 360 + 360) % 360 - 180);
     } else if (["arrow", "line"].includes(original.mode)) {
       const clampedPoint = {
         x: Math.max(0, Math.min(documentWidth(), point.x)),
@@ -2513,7 +2650,13 @@
         updated.controlY = clampedPoint.y;
       }
     } else {
-      Object.assign(updated, boxForResize(original, objectInteraction.handle, point));
+      const resizedBox = original.rotation
+        ? rotatedBoxForResize(original, objectInteraction.handle, point)
+        : boxForResize(original, objectInteraction.handle, point);
+      Object.assign(updated, resizedBox);
+      if (original.mode === "text" && original.scaleTextOnResize) {
+        updated.fontSize = Math.max(0.5, original.fontSize * resizedBox.height / Math.max(1, original.height));
+      }
     }
 
     const changed = JSON.stringify(updated) !== JSON.stringify(original);
@@ -2607,6 +2750,40 @@
       targetContext.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
       targetContext.strokeRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
     });
+    targetContext.restore();
+  }
+
+  function drawRotatedObjectSelection(targetContext, object) {
+    const displayScale = toolDisplayScale();
+    const lineWidth = Math.max(1, 2 * displayScale);
+    const handleSize = Math.max(5, 7 * displayScale);
+    const points = rectangularObjectHandles(object);
+    const corners = [points.nw, points.ne, points.se, points.sw];
+    targetContext.save();
+    targetContext.setLineDash([6 * displayScale, 4 * displayScale]);
+    targetContext.lineWidth = lineWidth;
+    targetContext.strokeStyle = "#2f6fed";
+    targetContext.beginPath();
+    targetContext.moveTo(corners[0].x, corners[0].y);
+    corners.slice(1).forEach((point) => targetContext.lineTo(point.x, point.y));
+    targetContext.closePath();
+    targetContext.stroke();
+    targetContext.beginPath();
+    targetContext.moveTo(points.topMiddle.x, points.topMiddle.y);
+    targetContext.lineTo(points.rotate.x, points.rotate.y);
+    targetContext.stroke();
+    targetContext.setLineDash([]);
+    targetContext.fillStyle = "#2f6fed";
+    targetContext.strokeStyle = "#ffffff";
+    targetContext.lineWidth = Math.max(1, displayScale);
+    corners.forEach((point) => {
+      targetContext.fillRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+      targetContext.strokeRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+    });
+    targetContext.beginPath();
+    targetContext.arc(points.rotate.x, points.rotate.y, handleSize * 0.58, 0, Math.PI * 2);
+    targetContext.fill();
+    targetContext.stroke();
     targetContext.restore();
   }
 
@@ -3019,6 +3196,20 @@
     return placedObjects.find((object) => object.id === activeObjectId) || null;
   }
 
+  function selectedObjects() {
+    return placedObjects.filter((object) => selectedObjectIds.has(object.id));
+  }
+
+  function clearSelectedObjects() {
+    activeObjectId = null;
+    selectedObjectIds.clear();
+  }
+
+  function selectOnlyObject(object) {
+    activeObjectId = object?.id || null;
+    selectedObjectIds = object ? new Set([object.id]) : new Set();
+  }
+
   function objectBounds(object) {
     if (!["arrow", "line"].includes(object.mode)) {
       return { x: object.x, y: object.y, width: object.width, height: object.height };
@@ -3094,6 +3285,12 @@
     }
     if (["mask", "text"].includes(object.mode)) {
       targetContext.save();
+      if (object.rotation) {
+        const center = rectangularObjectCenter(object);
+        targetContext.translate(center.x, center.y);
+        targetContext.rotate(objectRotationRadians(object));
+        targetContext.translate(-center.x, -center.y);
+      }
       targetContext.fillStyle = object.backgroundColor;
       targetContext.fillRect(object.x, object.y, object.width, object.height);
       drawObjectPattern(targetContext, object);
@@ -3173,7 +3370,7 @@
 
   function drawObjectSelection(targetContext, object) {
     if (!["arrow", "line"].includes(object.mode)) {
-      drawSelectionOutline(targetContext);
+      drawRotatedObjectSelection(targetContext, object);
       return;
     }
 
@@ -3303,7 +3500,7 @@
     targetContext.translate(transform.x, transform.y);
     targetContext.scale(transform.scale, transform.scale);
     if (mode === "smart") drawSmartTextPreview(targetContext, { drawObjects: smartTextAction !== "blur" });
-    else if (selectedObject) drawObjectSelection(targetContext, selectedObject);
+    else if (selectedObject) selectedObjects().forEach((object) => drawObjectSelection(targetContext, object));
     else drawCurrentTool(targetContext, true);
     targetContext.restore();
   }
@@ -3331,7 +3528,7 @@
     placedObjects.forEach((object) => drawPlacedObject(context, object));
     const selectedObject = activeObject();
     if (mode === "smart") drawSmartTextPreview(context);
-    else if (selectedObject) drawObjectSelection(context, selectedObject);
+    else if (selectedObject) selectedObjects().forEach((object) => drawObjectSelection(context, object));
     else if (mode === "arrange" && activeImageLayer()) drawSelectionOutline(context);
     else drawCurrentTool(context, true);
   }
@@ -3339,6 +3536,7 @@
   function updateControls() {
     if (mode === "smart" && !smartTextAnalyzing) ensureSmartTextAnalysisIsFresh();
     const selectedObject = activeObject();
+    const selectedCount = selectedObjects().length;
     const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
     const hasToolSelection = ["arrow", "line"].includes(mode) ? arrowLength() >= 2 : hasAreaSelection;
     elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop", "smart"].includes(mode);
@@ -3347,7 +3545,8 @@
     elements.clearSelectionButton.disabled = !selection;
     elements.undoButton.disabled = history.length === 0 || isRestoring;
     elements.redoButton.disabled = future.length === 0 || isRestoring;
-    elements.applyButtonLabel.textContent = selectedObject ? "Selected item" : {
+    elements.replacementText.disabled = selectedCount > 1;
+    elements.applyButtonLabel.textContent = selectedCount > 1 ? `${selectedCount} text layers selected` : selectedObject ? "Selected item" : {
       mask: "Apply mask",
       blur: "Apply blur",
       text: "Place text",
@@ -3360,7 +3559,9 @@
     }[mode];
     updateFontSizeUI();
 
-    if (hasToolSelection) {
+    if (selectedCount > 1) {
+      elements.selectionReadout.textContent = `${selectedCount} text layers`;
+    } else if (hasToolSelection) {
       elements.selectionReadout.textContent = ["arrow", "line"].includes(mode)
         ? `${Math.round(arrowLength())} px ${mode}`
         : `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
@@ -3385,7 +3586,7 @@
     }
     if (!preserveActive && activeObjectId) {
       commitPendingSettingsHistory();
-      activeObjectId = null;
+      clearSelectedObjects();
       selection = null;
       arrowStart = null;
       arrowEnd = null;
@@ -3442,9 +3643,24 @@
     if (isText && selection) elements.replacementText.focus({ preventScroll: true });
   }
 
-  function selectPlacedObject(object) {
+  function selectPlacedObject(object, { additive = false } = {}) {
     commitPendingSettingsHistory();
-    activeObjectId = object.id;
+    const canAdd = additive && object.mode === "text" && selectedObjects().every((selected) => selected.mode === "text");
+    if (canAdd) {
+      if (selectedObjectIds.has(object.id)) selectedObjectIds.delete(object.id);
+      else selectedObjectIds.add(object.id);
+      const remainingIds = [...selectedObjectIds];
+      activeObjectId = selectedObjectIds.has(object.id) ? object.id : remainingIds.at(-1) || null;
+      object = activeObject();
+      if (!object) {
+        selection = null;
+        updateControls();
+        render();
+        return;
+      }
+    } else {
+      selectOnlyObject(object);
+    }
     syncSelectionFromActiveObject();
     activeImageLayerId = null;
     setMode(object.mode, { preserveActive: true, loadSettings: false });
@@ -3511,21 +3727,24 @@
   function syncActiveObjectFromControls() {
     const object = activeObject();
     if (!object) return;
+    const objects = selectedObjects();
     if (!pendingSettingsHistory) pendingSettingsHistory = snapshot();
-    object.pattern = pattern;
-    object.backgroundColor = elements.backgroundColor.value;
-    object.text = object.mode === "text" ? elements.replacementText.value.trim() : object.text;
-    object.textColor = elements.textColor.value;
-    object.textFont = textFont;
-    object.textStyle = textStyle;
-    object.fontSize = Number(elements.fontSize.value);
-    object.autoTextSize = elements.autoTextSize.checked;
-    object.annotationColor = elements.annotationColor.value;
-    object.annotationSize = markerSize();
-    object.annotationStyle = annotationStyle;
-    object.annotationRoughness = annotationRoughness;
-    object.blurStyle = blurStyle;
-    object.blurStrength = blurStrength;
+    objects.forEach((selectedObject) => {
+      selectedObject.pattern = pattern;
+      selectedObject.backgroundColor = elements.backgroundColor.value;
+      if (objects.length === 1 && selectedObject.mode === "text") selectedObject.text = elements.replacementText.value.trim();
+      selectedObject.textColor = elements.textColor.value;
+      selectedObject.textFont = textFont;
+      selectedObject.textStyle = textStyle;
+      selectedObject.fontSize = Number(elements.fontSize.value);
+      selectedObject.autoTextSize = elements.autoTextSize.checked;
+      selectedObject.annotationColor = elements.annotationColor.value;
+      selectedObject.annotationSize = markerSize();
+      selectedObject.annotationStyle = annotationStyle;
+      selectedObject.annotationRoughness = annotationRoughness;
+      selectedObject.blurStyle = blurStyle;
+      selectedObject.blurStrength = blurStrength;
+    });
     captureToolSettings(object.mode);
     rebuildBaseCanvas();
     render();
@@ -3545,7 +3764,7 @@
 
   function restoreSnapshot(documentSnapshot) {
     isRestoring = true;
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = null;
     updateControls();
     if (Array.isArray(documentSnapshot.layers)) {
@@ -3657,7 +3876,7 @@
     rememberHistoryStep();
     const object = createPlacedObject();
     placedObjects.push(object);
-    activeObjectId = object.id;
+    selectOnlyObject(object);
     selectionInteraction = null;
     syncSelectionFromActiveObject();
     rebuildBaseCanvas();
@@ -3717,7 +3936,7 @@
     baseCanvas.height = height;
     canvas.width = width;
     canvas.height = height;
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = null;
     selection = null;
     arrowStart = null;
@@ -3750,7 +3969,7 @@
 
   function clearSelection() {
     commitPendingSettingsHistory();
-    activeObjectId = null;
+    clearSelectedObjects();
     activeImageLayerId = null;
     objectInteraction = null;
     imageLayerInteraction = null;
@@ -3764,11 +3983,12 @@
   }
 
   function deleteActiveObject() {
-    const object = activeObject();
-    if (!object) return false;
+    const objects = selectedObjects();
+    if (!objects.length) return false;
+    const objectIds = new Set(objects.map((object) => object.id));
     rememberHistoryStep();
-    placedObjects = placedObjects.filter((placedObject) => placedObject.id !== object.id);
-    activeObjectId = null;
+    placedObjects = placedObjects.filter((placedObject) => !objectIds.has(placedObject.id));
+    clearSelectedObjects();
     objectInteraction = null;
     selection = null;
     arrowStart = null;
@@ -3777,7 +3997,7 @@
     updateControls();
     render();
     scheduleCurrentImageSave();
-    showToast("Item removed.");
+    showToast(objects.length === 1 ? "Item removed." : `${objects.length} items removed.`);
     return true;
   }
 
@@ -3988,6 +4208,11 @@
 
     const hitObject = mode === "crop" ? null : findObjectAtPoint(point);
     if (hitObject) {
+      if (event.shiftKey && hitObject.mode === "text") {
+        selectPlacedObject(hitObject, { additive: true });
+        canvas.style.cursor = "default";
+        return;
+      }
       if (hitObject.id !== activeObjectId) selectPlacedObject(hitObject);
       beginObjectInteraction(hitObject, point, activeHandleAtPoint(point));
       canvas.style.cursor = "grabbing";
@@ -4003,7 +4228,7 @@
     }
 
     commitPendingSettingsHistory();
-    activeObjectId = null;
+    clearSelectedObjects();
     dragStart = point;
     arrowStart = { ...dragStart };
     arrowEnd = { ...dragStart };
@@ -4041,7 +4266,7 @@
         : activeHandleAtPoint(currentPoint) || selectionHandleAtPoint(currentPoint);
       if (["nw", "se"].includes(handle)) canvas.style.cursor = "nwse-resize";
       else if (["ne", "sw"].includes(handle)) canvas.style.cursor = "nesw-resize";
-      else if (["start", "end", "control"].includes(handle)) canvas.style.cursor = "grab";
+      else if (["start", "end", "control", "rotate"].includes(handle)) canvas.style.cursor = "grab";
       else if (mode === "arrange" && findImageLayerAtPoint(currentPoint)) canvas.style.cursor = "move";
       else if (selectionContainsPoint(currentPoint)) canvas.style.cursor = "move";
       else if (findObjectAtPoint(currentPoint)) canvas.style.cursor = "move";
@@ -4254,9 +4479,15 @@
     renderSmartTextMatches();
   });
   elements.smartTextSizeScale.addEventListener("input", () => {
-    smartTextSizeScale = clampNumber(elements.smartTextSizeScale.value, 60, 140, 100);
+    smartTextSizeScale = clampNumber(elements.smartTextSizeScale.value, 1, 200, 100);
     elements.smartTextSizeScaleValue.value = `${smartTextSizeScale}%`;
     savePreference(STORAGE_KEYS.smartTextSizeScale, String(smartTextSizeScale));
+    renderSmartTextMatches();
+  });
+  elements.smartTextRotation.addEventListener("input", () => {
+    smartTextRotation = clampNumber(elements.smartTextRotation.value, -180, 180, 0);
+    elements.smartTextRotationValue.value = `${smartTextRotation}°`;
+    savePreference(STORAGE_KEYS.smartTextRotation, String(smartTextRotation));
     renderSmartTextMatches();
   });
   elements.smartTextBlurStyleButtons.forEach((button) => {

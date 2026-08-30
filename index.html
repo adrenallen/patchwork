@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260830.4" />
+    <link rel="stylesheet" href="styles.css?v=20260830.5" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -161,7 +161,7 @@
 
               <label class="range-field font-size-field" for="fontSize">
                 <span class="range-heading"><span>Font size</span><output id="fontSizeValue" for="fontSize">28 px</output></span>
-                <input id="fontSize" type="range" min="8" max="160" step="1" value="28" />
+                <input id="fontSize" type="range" min="1" max="160" step="1" value="28" />
               </label>
               <label class="match-ratio-control auto-text-size-control" for="autoTextSize">
                 <input id="autoTextSize" type="checkbox" checked />
@@ -254,9 +254,13 @@
                   </div>
                   <label class="range-field smart-text-range" for="smartTextSizeScale">
                     <span class="range-heading"><span>Default size</span><output id="smartTextSizeScaleValue" for="smartTextSizeScale">100%</output></span>
-                    <input id="smartTextSizeScale" type="range" min="60" max="140" step="2" value="100" />
+                    <input id="smartTextSizeScale" type="range" min="1" max="200" step="1" value="100" />
                   </label>
-                  <p class="smart-text-style-hint" id="smartTextStyleHint">Auto uses the detected text height and font hints. Open Adjust on any match for a one-off override.</p>
+                  <label class="range-field smart-text-range" for="smartTextRotation">
+                    <span class="range-heading"><span>Default rotation</span><output id="smartTextRotationValue" for="smartTextRotation">0°</output></span>
+                    <input id="smartTextRotation" type="range" min="-180" max="180" step="1" value="0" />
+                  </label>
+                  <p class="smart-text-style-hint" id="smartTextStyleHint">Boxes grow to fit the replacement. Open Adjust for per-match size, weight, and rotation overrides.</p>
                 </div>
 
                 <div class="smart-text-results-heading">
@@ -464,6 +468,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.2"></script>
     <script src="share-layout.js?v=20260830.2"></script>
-    <script src="app.js?v=20260830.4"></script>
+    <script src="app.js?v=20260830.5"></script>
   </body>
 </html>
