@@ -423,7 +423,9 @@ kbd {
 
 .smart-text-options[hidden],
 .smart-text-progress[hidden],
-.smart-text-search[hidden] {
+.smart-text-search[hidden],
+.smart-text-action-options[hidden],
+.smart-text-match-adjustment[hidden] {
   display: none;
 }
 
@@ -475,8 +477,103 @@ kbd {
 }
 
 .smart-text-action {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
+}
+
+.smart-text-action-button {
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 9px;
+}
+
+.smart-text-action-note,
+.smart-text-style-hint {
+  margin: -5px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.smart-text-action-options {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.smart-text-option-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #3d4960;
+  font-size: 10px;
+}
+
+.smart-text-option-heading span {
+  color: var(--blue-dark);
+  font: 8px var(--utility);
+  text-transform: uppercase;
+}
+
+.smart-text-blur-style {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.smart-text-blur-style-button {
+  min-height: 30px;
+  font-size: 9px;
+}
+
+.smart-text-range {
+  margin: 0;
+}
+
+.smart-text-color-row {
+  min-height: 34px;
+  margin: 0;
+}
+
+.smart-text-pattern-control {
+  margin: 0;
+}
+
+.smart-text-pattern-button {
+  min-height: 46px;
+}
+
+.smart-text-replacement-field {
+  margin-bottom: 0;
+}
+
+.smart-text-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.smart-text-select-field {
+  display: grid;
+  gap: 5px;
+  color: #3d4960;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.smart-text-select-field select,
+.smart-text-match-weight select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--ink);
+  font-size: 10px;
 }
 
 .smart-text-results-heading {
@@ -494,30 +591,43 @@ kbd {
 
 .smart-text-match-list {
   display: grid;
-  max-height: 178px;
+  max-height: 230px;
   gap: 5px;
   overflow-y: auto;
 }
 
+.smart-text-match-card {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  overflow: hidden;
+}
+
 .smart-text-match {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   min-height: 38px;
   padding: 6px 8px;
   gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: white;
   color: var(--ink);
-  cursor: pointer;
 }
 
-.smart-text-match:hover {
+.smart-text-match-card:hover {
   border-color: var(--line-strong);
 }
 
-.smart-text-match span {
+.smart-text-match-select {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.smart-text-match-select span {
   min-width: 0;
   overflow: hidden;
   font-size: 10px;
@@ -526,9 +636,58 @@ kbd {
   white-space: nowrap;
 }
 
-.smart-text-match small {
+.smart-text-match-select small,
+.smart-text-match-summary {
   color: var(--muted);
   font: 8px var(--utility);
+}
+
+.smart-text-match-summary {
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-text-match-adjust {
+  padding: 0;
+  font-size: 9px;
+}
+
+.smart-text-match-adjustment {
+  display: grid;
+  grid-template-columns: minmax(82px, 0.8fr) minmax(105px, 1.2fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.smart-text-match-weight,
+.smart-text-match-size {
+  display: grid;
+  gap: 5px;
+  color: #3d4960;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.smart-text-match-size > span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.smart-text-match-size output {
+  color: var(--muted);
+  font: 8px var(--utility);
+}
+
+.smart-text-match-reset {
+  align-self: center;
+  padding: 0;
+  font-size: 8px;
+  white-space: nowrap;
 }
 
 .smart-text-apply {

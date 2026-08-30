@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260830.3" />
+    <link rel="stylesheet" href="styles.css?v=20260830.4" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -191,14 +191,73 @@
                 </div>
 
                 <div class="segmented-control smart-text-action" role="group" aria-label="Bulk text action">
-                  <button class="segment smart-text-action-button is-active" type="button" data-smart-action="redact" aria-pressed="true">Redact</button>
+                  <button class="segment smart-text-action-button is-active" type="button" data-smart-action="remove" aria-pressed="true">Remove</button>
+                  <button class="segment smart-text-action-button" type="button" data-smart-action="blur" aria-pressed="false">Blur</button>
+                  <button class="segment smart-text-action-button" type="button" data-smart-action="mask" aria-pressed="false">Mask</button>
                   <button class="segment smart-text-action-button" type="button" data-smart-action="replace" aria-pressed="false">Replace</button>
                 </div>
+                <p class="smart-text-action-note" id="smartTextActionNote">Samples the nearby background to cleanly cover the detected text.</p>
 
-                <label class="stacked-field" id="smartTextReplacementField" for="smartTextReplacement" hidden>
-                  <span>Replacement text</span>
-                  <input id="smartTextReplacement" type="text" placeholder="e.g. [REDACTED]" autocomplete="off" />
-                </label>
+                <div class="smart-text-action-options" id="smartTextBlurOptions" hidden>
+                  <div class="smart-text-option-heading"><strong>Blur settings</strong><span>Live preview</span></div>
+                  <div class="segmented-control smart-text-blur-style" role="group" aria-label="Smart Text blur style">
+                    <button class="segment smart-text-blur-style-button is-active" type="button" data-smart-blur-style="gaussian" aria-pressed="true">Gaussian</button>
+                    <button class="segment smart-text-blur-style-button" type="button" data-smart-blur-style="pixelize" aria-pressed="false">Pixelize</button>
+                  </div>
+                  <label class="range-field smart-text-range" for="smartTextBlurStrength">
+                    <span class="range-heading"><span>Strength</span><output id="smartTextBlurStrengthValue" for="smartTextBlurStrength">14</output></span>
+                    <input id="smartTextBlurStrength" type="range" min="2" max="40" step="1" value="14" />
+                  </label>
+                </div>
+
+                <div class="smart-text-action-options" id="smartTextMaskOptions" hidden>
+                  <div class="smart-text-option-heading"><strong>Mask settings</strong><span>Live preview</span></div>
+                  <div class="field-row smart-text-color-row">
+                    <label class="field-label" for="smartTextMaskColor">Background</label>
+                    <div class="color-control">
+                      <input id="smartTextMaskColor" type="color" value="#111827" />
+                      <output id="smartTextMaskColorValue" for="smartTextMaskColor">#111827</output>
+                    </div>
+                  </div>
+                  <div class="pattern-control smart-text-pattern-control" role="group" aria-label="Smart Text mask fill style">
+                    <button class="pattern-button smart-text-pattern-button is-active" type="button" data-smart-mask-pattern="solid" aria-pressed="true"><span class="pattern-sample pattern-solid" aria-hidden="true"></span><span>Solid</span></button>
+                    <button class="pattern-button smart-text-pattern-button" type="button" data-smart-mask-pattern="diagonal" aria-pressed="false"><span class="pattern-sample pattern-diagonal" aria-hidden="true"></span><span>Diagonal</span></button>
+                    <button class="pattern-button smart-text-pattern-button" type="button" data-smart-mask-pattern="hatch" aria-pressed="false"><span class="pattern-sample pattern-hatch" aria-hidden="true"></span><span>Hatch</span></button>
+                  </div>
+                </div>
+
+                <div class="smart-text-action-options smart-text-replace-options" id="smartTextReplaceOptions" hidden>
+                  <div class="smart-text-option-heading"><strong>Replacement preview</strong><span>Live on canvas</span></div>
+                  <label class="stacked-field smart-text-replacement-field" for="smartTextReplacement">
+                    <span>Replacement text</span>
+                    <input id="smartTextReplacement" type="text" placeholder="e.g. [REDACTED]" autocomplete="off" />
+                  </label>
+                  <div class="smart-text-type-grid">
+                    <label class="smart-text-select-field" for="smartTextFont">
+                      <span>Font</span>
+                      <select id="smartTextFont">
+                        <option value="auto">Auto detect</option>
+                        <option value="sans">Sans</option>
+                        <option value="serif">Serif</option>
+                        <option value="mono">Mono</option>
+                        <option value="hand">Hand</option>
+                      </select>
+                    </label>
+                    <label class="smart-text-select-field" for="smartTextWeight">
+                      <span>Weight</span>
+                      <select id="smartTextWeight">
+                        <option value="auto">Auto detect</option>
+                        <option value="normal">Normal</option>
+                        <option value="bold">Bold</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="range-field smart-text-range" for="smartTextSizeScale">
+                    <span class="range-heading"><span>Default size</span><output id="smartTextSizeScaleValue" for="smartTextSizeScale">100%</output></span>
+                    <input id="smartTextSizeScale" type="range" min="60" max="140" step="2" value="100" />
+                  </label>
+                  <p class="smart-text-style-hint" id="smartTextStyleHint">Auto uses the detected text height and font hints. Open Adjust on any match for a one-off override.</p>
+                </div>
 
                 <div class="smart-text-results-heading">
                   <strong id="smartTextMatchCount">Enter text to find matches</strong>
@@ -206,7 +265,7 @@
                 </div>
                 <div class="smart-text-match-list" id="smartTextMatchList"></div>
                 <button class="apply-button smart-text-apply" id="applySmartTextButton" type="button" disabled>
-                  <span id="applySmartTextButtonLabel">Redact selected</span>
+                  <span id="applySmartTextButtonLabel">Remove selected</span>
                   <span aria-hidden="true">+</span>
                 </button>
               </div>
@@ -403,8 +462,8 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="smart-text.js?v=20260830.1"></script>
+    <script src="smart-text.js?v=20260830.2"></script>
     <script src="share-layout.js?v=20260830.2"></script>
-    <script src="app.js?v=20260830.3"></script>
+    <script src="app.js?v=20260830.4"></script>
   </body>
 </html>

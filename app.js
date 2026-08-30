@@ -4,6 +4,8 @@
     extractOcrWords,
     findPhraseMatches,
     estimatePatchAppearance,
+    inferFontFamily,
+    inferFontWeight,
     paddedBounds,
   } = window.PatchworkSmartText;
   const canvas = document.querySelector("#editorCanvas");
@@ -51,8 +53,22 @@
     smartTextCaseSensitive: document.querySelector("#smartTextCaseSensitive"),
     smartTextWholeWord: document.querySelector("#smartTextWholeWord"),
     smartTextActionButtons: [...document.querySelectorAll(".smart-text-action-button")],
-    smartTextReplacementField: document.querySelector("#smartTextReplacementField"),
+    smartTextActionNote: document.querySelector("#smartTextActionNote"),
+    smartTextBlurOptions: document.querySelector("#smartTextBlurOptions"),
+    smartTextBlurStyleButtons: [...document.querySelectorAll(".smart-text-blur-style-button")],
+    smartTextBlurStrength: document.querySelector("#smartTextBlurStrength"),
+    smartTextBlurStrengthValue: document.querySelector("#smartTextBlurStrengthValue"),
+    smartTextMaskOptions: document.querySelector("#smartTextMaskOptions"),
+    smartTextMaskColor: document.querySelector("#smartTextMaskColor"),
+    smartTextMaskColorValue: document.querySelector("#smartTextMaskColorValue"),
+    smartTextMaskPatternButtons: [...document.querySelectorAll(".smart-text-pattern-button")],
+    smartTextReplaceOptions: document.querySelector("#smartTextReplaceOptions"),
     smartTextReplacement: document.querySelector("#smartTextReplacement"),
+    smartTextFont: document.querySelector("#smartTextFont"),
+    smartTextWeight: document.querySelector("#smartTextWeight"),
+    smartTextSizeScale: document.querySelector("#smartTextSizeScale"),
+    smartTextSizeScaleValue: document.querySelector("#smartTextSizeScaleValue"),
+    smartTextStyleHint: document.querySelector("#smartTextStyleHint"),
     smartTextMatchCount: document.querySelector("#smartTextMatchCount"),
     smartTextToggleMatches: document.querySelector("#smartTextToggleMatches"),
     smartTextMatchList: document.querySelector("#smartTextMatchList"),
@@ -143,6 +159,13 @@
     cornerRadius: "patchwork.cornerRadius",
     reflectionEnabled: "patchwork.reflectionEnabled",
     toolSettings: "patchwork.toolSettings",
+    smartTextFont: "patchwork.smartTextFont",
+    smartTextWeight: "patchwork.smartTextWeight",
+    smartTextSizeScale: "patchwork.smartTextSizeScale",
+    smartTextBlurStyle: "patchwork.smartTextBlurStyle",
+    smartTextBlurStrength: "patchwork.smartTextBlurStrength",
+    smartTextMaskColor: "patchwork.smartTextMaskColor",
+    smartTextMaskPattern: "patchwork.smartTextMaskPattern",
   };
 
   const GRADIENTS = {
@@ -180,7 +203,13 @@
   let textStyle = "bold";
   let annotationStyle = "clean";
   let annotationRoughness = 3;
-  let smartTextAction = "redact";
+  let smartTextAction = "remove";
+  let smartTextFont = "auto";
+  let smartTextWeight = "auto";
+  let smartTextSizeScale = 100;
+  let smartTextBlurStyle = "gaussian";
+  let smartTextBlurStrength = 14;
+  let smartTextMaskPattern = "solid";
   let smartTextWords = [];
   let smartTextMatches = [];
   let smartTextAnalyzing = false;
@@ -561,6 +590,24 @@
     }
     elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 24, 10));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
+    const savedSmartFont = readPreference(STORAGE_KEYS.smartTextFont, "auto");
+    const savedSmartWeight = readPreference(STORAGE_KEYS.smartTextWeight, "auto");
+    smartTextFont = ["auto", ...Object.keys(TEXT_FONTS)].includes(savedSmartFont) ? savedSmartFont : "auto";
+    smartTextWeight = ["auto", "normal", "bold"].includes(savedSmartWeight) ? savedSmartWeight : "auto";
+    smartTextSizeScale = clampNumber(readPreference(STORAGE_KEYS.smartTextSizeScale, "100"), 60, 140, 100);
+    smartTextBlurStyle = ["gaussian", "pixelize"].includes(readPreference(STORAGE_KEYS.smartTextBlurStyle, "gaussian"))
+      ? readPreference(STORAGE_KEYS.smartTextBlurStyle, "gaussian")
+      : "gaussian";
+    smartTextBlurStrength = clampNumber(readPreference(STORAGE_KEYS.smartTextBlurStrength, "14"), 2, 40, 14);
+    smartTextMaskPattern = ["solid", "diagonal", "hatch"].includes(readPreference(STORAGE_KEYS.smartTextMaskPattern, "solid"))
+      ? readPreference(STORAGE_KEYS.smartTextMaskPattern, "solid")
+      : "solid";
+    elements.smartTextFont.value = smartTextFont;
+    elements.smartTextWeight.value = smartTextWeight;
+    elements.smartTextSizeScale.value = String(smartTextSizeScale);
+    elements.smartTextBlurStrength.value = String(smartTextBlurStrength);
+    elements.smartTextMaskColor.value = readPreference(STORAGE_KEYS.smartTextMaskColor, legacyBackground);
+    updateSmartTextOptionUI();
     updatePresentationUI();
     loadRecentPatches();
     updatePreferenceLabels();
@@ -895,6 +942,13 @@
         x1: word.bbox.x1 / scale,
         y1: word.bbox.y1 / scale,
       },
+      baseline: word.baseline ? {
+        x0: word.baseline.x0 / scale,
+        y0: word.baseline.y0 / scale,
+        x1: word.baseline.x1 / scale,
+        y1: word.baseline.y1 / scale,
+      } : null,
+      rowHeight: Number(word.rowHeight || 0) / scale,
     }));
   }
 
@@ -957,9 +1011,47 @@
     return smartTextMatches.filter((match) => match.selected);
   }
 
+  function smartTextActionCopy(action = smartTextAction) {
+    return {
+      remove: { label: "Remove", past: "Removed", note: "Samples the nearby background to cleanly cover the detected text." },
+      blur: { label: "Blur", past: "Blurred", note: "Obscures detected text with an editable Gaussian blur or pixelation." },
+      mask: { label: "Mask", past: "Masked", note: "Covers detected text with your chosen color and fill pattern." },
+      replace: { label: "Replace", past: "Replaced", note: "Samples the colors and previews replacement typography before applying." },
+    }[action] || { label: "Remove", past: "Removed", note: "" };
+  }
+
+  function updateSmartTextOptionUI() {
+    elements.smartTextBlurOptions.hidden = smartTextAction !== "blur";
+    elements.smartTextMaskOptions.hidden = smartTextAction !== "mask";
+    elements.smartTextReplaceOptions.hidden = smartTextAction !== "replace";
+    elements.smartTextActionNote.textContent = smartTextActionCopy().note;
+    elements.smartTextFont.value = smartTextFont;
+    elements.smartTextWeight.value = smartTextWeight;
+    elements.smartTextSizeScale.value = String(smartTextSizeScale);
+    elements.smartTextSizeScaleValue.value = `${smartTextSizeScale}%`;
+    elements.smartTextBlurStrength.value = String(smartTextBlurStrength);
+    elements.smartTextBlurStrengthValue.value = smartTextBlurStyle === "pixelize"
+      ? `${smartTextBlurStrength} px`
+      : String(smartTextBlurStrength);
+    elements.smartTextBlurStyleButtons.forEach((button) => {
+      const active = button.dataset.smartBlurStyle === smartTextBlurStyle;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.smartTextMaskColorValue.value = elements.smartTextMaskColor.value.toUpperCase();
+    const lineColor = getPatternLineColor(elements.smartTextMaskColor.value, 0.32);
+    elements.smartTextMaskPatternButtons.forEach((button) => {
+      const active = button.dataset.smartMaskPattern === smartTextMaskPattern;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+      button.style.setProperty("--sample-color", elements.smartTextMaskColor.value);
+      button.style.setProperty("--sample-line", lineColor);
+    });
+  }
+
   function syncSmartTextApplyState() {
     const count = selectedSmartTextMatches().length;
-    const actionLabel = smartTextAction === "replace" ? "Replace" : "Redact";
+    const actionLabel = smartTextActionCopy().label;
     elements.applySmartTextButtonLabel.textContent = count
       ? `${actionLabel} ${count} selected`
       : `${actionLabel} selected`;
@@ -972,11 +1064,109 @@
     elements.smartTextToggleMatches.disabled = smartTextMatches.length === 0;
   }
 
+  function smartTextAppearance(match) {
+    return match.appearance || {
+      backgroundColor: "#ffffff",
+      textColor: "#14213d",
+      foregroundCoverage: 0,
+      padding: Math.max(2, Math.round((match.bbox.y1 - match.bbox.y0) * 0.16)),
+    };
+  }
+
+  function smartTextResolvedStyle(match) {
+    const appearance = smartTextAppearance(match);
+    const requestedFont = match.fontOverride || smartTextFont;
+    const requestedWeight = match.weightOverride || smartTextWeight;
+    const family = requestedFont === "auto" ? inferFontFamily(match.fontName) : requestedFont;
+    const weight = requestedWeight === "auto"
+      ? inferFontWeight(match.fontName, appearance.foregroundCoverage)
+      : requestedWeight;
+    const scale = clampNumber(match.sizeScaleOverride ?? smartTextSizeScale, 60, 140, 100);
+    const sourceHeight = Math.max(1, match.bbox.y1 - match.bbox.y0);
+    const probeSize = 100;
+    baseContext.save();
+    baseContext.font = `${weight === "bold" ? 700 : 400} ${probeSize}px ${fontFamilyFor(family)}`;
+    const metrics = baseContext.measureText(match.text || "Ag");
+    baseContext.restore();
+    const probeInkHeight = Math.max(1, (metrics.actualBoundingBoxAscent || probeSize * 0.72)
+      + (metrics.actualBoundingBoxDescent || probeSize * 0.2));
+    const fontSize = Math.max(4, Math.min(160, (sourceHeight * probeSize / probeInkHeight) * scale / 100));
+    return { family, weight, scale, fontSize };
+  }
+
+  function smartTextStyleSummary(match) {
+    const style = smartTextResolvedStyle(match);
+    return `${TEXT_FONTS[style.family]?.label || "Sans"} · ${style.weight === "bold" ? "Bold" : "Normal"} · ${Math.round(style.fontSize)} px`;
+  }
+
+  function createSmartTextMatchAdjustment(match, summary) {
+    const adjustment = document.createElement("div");
+    adjustment.className = "smart-text-match-adjustment";
+    adjustment.hidden = !match.tuningOpen;
+
+    const weightLabel = document.createElement("label");
+    weightLabel.className = "smart-text-match-weight";
+    const weightTitle = document.createElement("span");
+    weightTitle.textContent = "Weight";
+    const weightSelect = document.createElement("select");
+    [
+      ["", "Use default"],
+      ["auto", "Auto detect"],
+      ["normal", "Normal"],
+      ["bold", "Bold"],
+    ].forEach(([value, label]) => weightSelect.add(new Option(label, value)));
+    weightSelect.value = match.weightOverride || "";
+    weightSelect.addEventListener("change", () => {
+      match.weightOverride = weightSelect.value || null;
+      summary.textContent = smartTextStyleSummary(match);
+      render();
+    });
+    weightLabel.append(weightTitle, weightSelect);
+
+    const sizeLabel = document.createElement("label");
+    sizeLabel.className = "smart-text-match-size";
+    const sizeHeading = document.createElement("span");
+    sizeHeading.textContent = "Size";
+    const sizeValue = document.createElement("output");
+    const currentScale = clampNumber(match.sizeScaleOverride ?? smartTextSizeScale, 60, 140, 100);
+    sizeValue.value = `${currentScale}%`;
+    sizeHeading.append(sizeValue);
+    const sizeInput = document.createElement("input");
+    sizeInput.type = "range";
+    sizeInput.min = "60";
+    sizeInput.max = "140";
+    sizeInput.step = "2";
+    sizeInput.value = String(currentScale);
+    sizeInput.addEventListener("input", () => {
+      match.sizeScaleOverride = Number(sizeInput.value);
+      sizeValue.value = `${sizeInput.value}%`;
+      summary.textContent = smartTextStyleSummary(match);
+      render();
+    });
+    sizeLabel.append(sizeHeading, sizeInput);
+
+    const reset = document.createElement("button");
+    reset.className = "text-button smart-text-match-reset";
+    reset.type = "button";
+    reset.textContent = "Use defaults";
+    reset.addEventListener("click", () => {
+      match.weightOverride = null;
+      match.sizeScaleOverride = null;
+      renderSmartTextMatches();
+    });
+    adjustment.append(weightLabel, sizeLabel, reset);
+    return adjustment;
+  }
+
   function renderSmartTextMatches() {
     elements.smartTextMatchList.replaceChildren();
     smartTextMatches.forEach((match) => {
+      const card = document.createElement("div");
+      card.className = "smart-text-match-card";
+      const row = document.createElement("div");
+      row.className = "smart-text-match";
       const label = document.createElement("label");
-      label.className = "smart-text-match";
+      label.className = "smart-text-match-select";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = match.selected;
@@ -990,7 +1180,26 @@
       const confidence = document.createElement("small");
       confidence.textContent = `${Math.round(match.confidence)}%`;
       label.append(checkbox, text, confidence);
-      elements.smartTextMatchList.append(label);
+      row.append(label);
+      if (smartTextAction === "replace") {
+        const summary = document.createElement("small");
+        summary.className = "smart-text-match-summary";
+        summary.textContent = smartTextStyleSummary(match);
+        const adjust = document.createElement("button");
+        adjust.className = "text-button smart-text-match-adjust";
+        adjust.type = "button";
+        adjust.textContent = match.tuningOpen ? "Done" : "Adjust";
+        adjust.setAttribute("aria-expanded", String(Boolean(match.tuningOpen)));
+        adjust.addEventListener("click", () => {
+          match.tuningOpen = !match.tuningOpen;
+          renderSmartTextMatches();
+        });
+        row.append(summary, adjust);
+        card.append(row, createSmartTextMatchAdjustment(match, summary));
+      } else {
+        card.append(row);
+      }
+      elements.smartTextMatchList.append(card);
     });
     const count = smartTextMatches.length;
     elements.smartTextMatchCount.textContent = elements.smartTextQuery.value.trim()
@@ -1007,44 +1216,76 @@
       renderSmartTextMatches();
       return;
     }
+    let imageData = null;
+    try {
+      imageData = baseContext.getImageData(0, 0, baseCanvas.width, baseCanvas.height);
+    } catch {
+      imageData = null;
+    }
     smartTextMatches = findPhraseMatches(smartTextWords, elements.smartTextQuery.value, {
       caseSensitive: elements.smartTextCaseSensitive.checked,
       wholeWord: elements.smartTextWholeWord.checked,
-    }).map((match) => ({ ...match, selected: true }));
+    }).map((match) => ({
+      ...match,
+      selected: true,
+      appearance: imageData ? estimatePatchAppearance(imageData, match.bbox) : null,
+      tuningOpen: false,
+      weightOverride: null,
+      sizeScaleOverride: null,
+    }));
     renderSmartTextMatches();
   }
 
   function setSmartTextAction(action) {
-    smartTextAction = action === "replace" ? "replace" : "redact";
+    smartTextAction = ["remove", "blur", "mask", "replace"].includes(action) ? action : "remove";
     elements.smartTextActionButtons.forEach((button) => {
       const active = button.dataset.smartAction === smartTextAction;
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-pressed", String(active));
     });
-    elements.smartTextReplacementField.hidden = smartTextAction !== "replace";
-    syncSmartTextApplyState();
+    updateSmartTextOptionUI();
+    renderSmartTextMatches();
   }
 
-  function smartTextObject(match, imageData) {
-    const appearance = estimatePatchAppearance(imageData, match.bbox);
+  function smartTextObject(match, { createId = true } = {}) {
+    const appearance = smartTextAppearance(match);
+    const previewPadding = smartTextAction === "blur" ? Math.max(1, Math.round(appearance.padding * 0.55)) : appearance.padding;
     const bounds = paddedBounds(
       match.bbox,
-      appearance.padding,
+      previewPadding,
       baseCanvas.width,
       baseCanvas.height,
     );
+    if (smartTextAction === "blur") {
+      return {
+        id: createId ? createObjectId() : null,
+        mode: "blur",
+        blurStyle: smartTextBlurStyle,
+        blurStrength: smartTextBlurStrength,
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      };
+    }
     const replacing = smartTextAction === "replace";
+    const style = smartTextResolvedStyle(match);
+    const baselineY = match.baseline
+      ? (Number(match.baseline.y0) + Number(match.baseline.y1)) / 2
+      : match.bbox.y1;
     return {
-      id: createObjectId(),
+      id: createId ? createObjectId() : null,
       mode: replacing ? "text" : "mask",
-      pattern: "solid",
-      backgroundColor: appearance.backgroundColor,
+      pattern: smartTextAction === "mask" ? smartTextMaskPattern : "solid",
+      backgroundColor: smartTextAction === "mask" ? elements.smartTextMaskColor.value : appearance.backgroundColor,
       text: replacing ? elements.smartTextReplacement.value.trim() : "",
       textColor: appearance.textColor,
-      textFont: "sans",
-      textStyle: "normal",
-      fontSize: clampNumber((match.bbox.y1 - match.bbox.y0) * 0.72, 8, 160, 28),
-      autoTextSize: true,
+      textFont: style.family,
+      textStyle: style.weight,
+      fontSize: style.fontSize,
+      autoTextSize: false,
+      textInsetRatio: Math.max(0, (match.bbox.x0 - bounds.x) / Math.max(1, bounds.width)),
+      textBaselineRatio: Math.max(0, Math.min(1, (baselineY - bounds.y) / Math.max(1, bounds.height))),
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
@@ -1058,19 +1299,12 @@
     ensureSmartTextAnalysisIsFresh();
     const matches = selectedSmartTextMatches();
     if (!matches.length || elements.applySmartTextButton.disabled) return;
-    let imageData;
-    try {
-      imageData = baseContext.getImageData(0, 0, baseCanvas.width, baseCanvas.height);
-    } catch {
-      showToast("Patchwork could not sample colors from this image.");
-      return;
-    }
     rememberHistoryStep();
-    placedObjects.push(...matches.map((match) => smartTextObject(match, imageData)));
+    placedObjects.push(...matches.map((match) => smartTextObject(match)));
     activeObjectId = null;
     selection = null;
     rebuildBaseCanvas();
-    const action = smartTextAction === "replace" ? "Replaced" : "Redacted";
+    const action = smartTextActionCopy().past;
     smartTextWords = [];
     smartTextMatches = [];
     smartTextRevision = null;
@@ -1084,19 +1318,17 @@
     showToast(`${action} ${matches.length} text ${matches.length === 1 ? "match" : "matches"}.`);
   }
 
-  function drawSmartTextPreview(targetContext) {
+  function drawSmartTextPreview(targetContext, { drawObjects = true } = {}) {
     if (mode !== "smart" || smartTextRevision !== documentRevision || !smartTextMatches.length) return;
     const displayScale = toolDisplayScale();
+    if (drawObjects) selectedSmartTextMatches().forEach((match) => drawPlacedObject(targetContext, smartTextObject(match, { createId: false })));
     targetContext.save();
-    targetContext.fillStyle = "rgba(47, 111, 237, 0.16)";
     targetContext.strokeStyle = "#2f6fed";
-    targetContext.lineWidth = Math.max(1, 2 * displayScale);
-    targetContext.setLineDash([5 * displayScale, 3 * displayScale]);
+    targetContext.lineWidth = Math.max(1, 1.5 * displayScale);
+    targetContext.setLineDash([4 * displayScale, 3 * displayScale]);
     selectedSmartTextMatches().forEach((match) => {
-      const width = match.bbox.x1 - match.bbox.x0;
-      const height = match.bbox.y1 - match.bbox.y0;
-      targetContext.fillRect(match.bbox.x0, match.bbox.y0, width, height);
-      targetContext.strokeRect(match.bbox.x0, match.bbox.y0, width, height);
+      const object = smartTextObject(match, { createId: false });
+      targetContext.strokeRect(object.x, object.y, object.width, object.height);
     });
     targetContext.restore();
   }
@@ -2867,15 +3099,23 @@
       drawObjectPattern(targetContext, object);
       if (object.mode === "text" && object.text) {
         const size = objectFontSize(targetContext, object);
-        const padding = Math.max(4, Math.min(size * 0.42, object.width * 0.08));
+        const defaultPadding = Math.max(4, Math.min(size * 0.42, object.width * 0.08));
+        const padding = Number.isFinite(Number(object.textInsetRatio))
+          ? object.width * Number(object.textInsetRatio)
+          : defaultPadding;
+        const hasDetectedBaseline = Number.isFinite(Number(object.textBaselineRatio));
         targetContext.beginPath();
         targetContext.rect(object.x, object.y, object.width, object.height);
         targetContext.clip();
         targetContext.fillStyle = object.textColor;
         targetContext.font = objectFont(object, size);
         targetContext.textAlign = "left";
-        targetContext.textBaseline = "middle";
-        targetContext.fillText(object.text, object.x + padding, object.y + object.height / 2);
+        targetContext.textBaseline = hasDetectedBaseline ? "alphabetic" : "middle";
+        targetContext.fillText(
+          object.text,
+          object.x + padding,
+          hasDetectedBaseline ? object.y + object.height * Number(object.textBaselineRatio) : object.y + object.height / 2,
+        );
       }
       targetContext.restore();
       return;
@@ -3054,10 +3294,15 @@
       });
       return;
     }
+    if (mode === "smart" && smartTextAction === "blur") {
+      selectedSmartTextMatches().forEach((match) => {
+        drawBlurRegion(targetContext, shareBlurObject(smartTextObject(match, { createId: false })));
+      });
+    }
     targetContext.save();
     targetContext.translate(transform.x, transform.y);
     targetContext.scale(transform.scale, transform.scale);
-    if (mode === "smart") drawSmartTextPreview(targetContext);
+    if (mode === "smart") drawSmartTextPreview(targetContext, { drawObjects: smartTextAction !== "blur" });
     else if (selectedObject) drawObjectSelection(targetContext, selectedObject);
     else drawCurrentTool(targetContext, true);
     targetContext.restore();
@@ -3990,7 +4235,59 @@
   elements.smartTextActionButtons.forEach((button) => {
     button.addEventListener("click", () => setSmartTextAction(button.dataset.smartAction));
   });
-  elements.smartTextReplacement.addEventListener("input", syncSmartTextApplyState);
+  elements.smartTextReplacement.addEventListener("input", () => {
+    syncSmartTextApplyState();
+    render();
+  });
+  elements.smartTextFont.addEventListener("change", () => {
+    smartTextFont = ["auto", ...Object.keys(TEXT_FONTS)].includes(elements.smartTextFont.value)
+      ? elements.smartTextFont.value
+      : "auto";
+    savePreference(STORAGE_KEYS.smartTextFont, smartTextFont);
+    renderSmartTextMatches();
+  });
+  elements.smartTextWeight.addEventListener("change", () => {
+    smartTextWeight = ["auto", "normal", "bold"].includes(elements.smartTextWeight.value)
+      ? elements.smartTextWeight.value
+      : "auto";
+    savePreference(STORAGE_KEYS.smartTextWeight, smartTextWeight);
+    renderSmartTextMatches();
+  });
+  elements.smartTextSizeScale.addEventListener("input", () => {
+    smartTextSizeScale = clampNumber(elements.smartTextSizeScale.value, 60, 140, 100);
+    elements.smartTextSizeScaleValue.value = `${smartTextSizeScale}%`;
+    savePreference(STORAGE_KEYS.smartTextSizeScale, String(smartTextSizeScale));
+    renderSmartTextMatches();
+  });
+  elements.smartTextBlurStyleButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      smartTextBlurStyle = button.dataset.smartBlurStyle === "pixelize" ? "pixelize" : "gaussian";
+      savePreference(STORAGE_KEYS.smartTextBlurStyle, smartTextBlurStyle);
+      updateSmartTextOptionUI();
+      render();
+    });
+  });
+  elements.smartTextBlurStrength.addEventListener("input", () => {
+    smartTextBlurStrength = clampNumber(elements.smartTextBlurStrength.value, 2, 40, 14);
+    savePreference(STORAGE_KEYS.smartTextBlurStrength, String(smartTextBlurStrength));
+    updateSmartTextOptionUI();
+    render();
+  });
+  elements.smartTextMaskColor.addEventListener("input", () => {
+    savePreference(STORAGE_KEYS.smartTextMaskColor, elements.smartTextMaskColor.value);
+    updateSmartTextOptionUI();
+    render();
+  });
+  elements.smartTextMaskPatternButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      smartTextMaskPattern = ["solid", "diagonal", "hatch"].includes(button.dataset.smartMaskPattern)
+        ? button.dataset.smartMaskPattern
+        : "solid";
+      savePreference(STORAGE_KEYS.smartTextMaskPattern, smartTextMaskPattern);
+      updateSmartTextOptionUI();
+      render();
+    });
+  });
   elements.smartTextToggleMatches.addEventListener("click", () => {
     const selectAll = selectedSmartTextMatches().length !== smartTextMatches.length;
     smartTextMatches.forEach((match) => { match.selected = selectAll; });

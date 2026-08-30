@@ -32,6 +32,14 @@
           text,
           confidence: Number.isFinite(Number(word.confidence)) ? Number(word.confidence) : 0,
           bbox: bboxFor(word),
+          fontName: String(word.font_name || word.fontName || "").trim(),
+          baseline: line.baseline ? {
+            x0: Number(line.baseline.x0 || 0),
+            y0: Number(line.baseline.y0 || 0),
+            x1: Number(line.baseline.x1 || 0),
+            y1: Number(line.baseline.y1 || 0),
+          } : null,
+          rowHeight: Number(line.rowAttributes?.rowHeight || 0),
         });
       });
     }
@@ -66,6 +74,27 @@
     };
   }
 
+  function mostFrequent(values = []) {
+    const counts = new Map();
+    values.filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) || 0) + 1));
+    return [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || "";
+  }
+
+  function inferFontFamily(fontName = "") {
+    const normalized = String(fontName).toLocaleLowerCase();
+    if (/mono|courier|consolas|typewriter|code/.test(normalized)) return "mono";
+    if (/serif|times|georgia|garamond|cambria|baskerville|roman/.test(normalized)) return "serif";
+    if (/script|hand|comic|cursive|marker|brush/.test(normalized)) return "hand";
+    return "sans";
+  }
+
+  function inferFontWeight(fontName = "", foregroundCoverage = 0) {
+    const normalized = String(fontName).toLocaleLowerCase();
+    if (/bold|black|heavy|semibold|demi|extrabold/.test(normalized)) return "bold";
+    if (/light|thin|regular|book|normal/.test(normalized)) return "normal";
+    return Number(foregroundCoverage) >= 0.32 ? "bold" : "normal";
+  }
+
   function findPhraseMatches(words = [], query = "", { caseSensitive = false, wholeWord = true } = {}) {
     const queryTokens = String(query).trim().split(/\s+/).map((token) => normalizedToken(token, caseSensitive)).filter(Boolean);
     if (!queryTokens.length) return [];
@@ -86,6 +115,9 @@
         confidence: candidates.reduce((total, word) => total + word.confidence, 0) / candidates.length,
         bbox: unionBboxes(candidates),
         wordIds: candidates.map((word) => word.id),
+        fontName: mostFrequent(candidates.map((word) => word.fontName)),
+        baseline: candidates.find((word) => word.baseline)?.baseline || null,
+        rowHeight: Math.max(0, ...candidates.map((word) => Number(word.rowHeight || 0))),
       });
       index += queryTokens.length - 1;
     }
@@ -161,8 +193,10 @@
     const background = dominantColor(ringPixels);
 
     const foregroundPixels = [];
+    let sampledInnerPixels = 0;
     for (let y = y0; y < y1; y += step) {
       for (let x = x0; x < x1; x += step) {
+        sampledInnerPixels += 1;
         const pixel = pixelAt(imageData, x, y);
         if (colorDistance(pixel, background.color) >= 52) foregroundPixels.push(pixel);
       }
@@ -177,6 +211,7 @@
       backgroundColor: hexColor(background.color),
       textColor: hexColor(foreground.color),
       backgroundConfidence: background.share,
+      foregroundCoverage: foregroundPixels.length / Math.max(1, sampledInnerPixels),
       padding,
     };
   }
@@ -194,6 +229,8 @@
     extractOcrWords,
     findPhraseMatches,
     estimatePatchAppearance,
+    inferFontFamily,
+    inferFontWeight,
     paddedBounds,
   };
 }));
