@@ -1,5 +1,11 @@
 (() => {
   const { calculateShareLayout, mapDocumentBounds, unmapShareBounds } = window.PatchworkShareLayout;
+  const {
+    extractOcrWords,
+    findPhraseMatches,
+    estimatePatchAppearance,
+    paddedBounds,
+  } = window.PatchworkSmartText;
   const canvas = document.querySelector("#editorCanvas");
   const context = canvas.getContext("2d", { willReadFrequently: true });
   const baseCanvas = document.createElement("canvas");
@@ -24,6 +30,7 @@
     maskModeButton: document.querySelector("#maskModeButton"),
     blurModeButton: document.querySelector("#blurModeButton"),
     textModeButton: document.querySelector("#textModeButton"),
+    smartTextModeButton: document.querySelector("#smartTextModeButton"),
     circleModeButton: document.querySelector("#circleModeButton"),
     arrowModeButton: document.querySelector("#arrowModeButton"),
     lineModeButton: document.querySelector("#lineModeButton"),
@@ -34,6 +41,23 @@
     blurStrength: document.querySelector("#blurStrength"),
     blurStrengthValue: document.querySelector("#blurStrengthValue"),
     textOptions: document.querySelector("#textOptions"),
+    smartTextOptions: document.querySelector("#smartTextOptions"),
+    analyzeTextButton: document.querySelector("#analyzeTextButton"),
+    smartTextProgress: document.querySelector("#smartTextProgress"),
+    smartTextProgressBar: document.querySelector("#smartTextProgressBar"),
+    smartTextStatus: document.querySelector("#smartTextStatus"),
+    smartTextSearch: document.querySelector("#smartTextSearch"),
+    smartTextQuery: document.querySelector("#smartTextQuery"),
+    smartTextCaseSensitive: document.querySelector("#smartTextCaseSensitive"),
+    smartTextWholeWord: document.querySelector("#smartTextWholeWord"),
+    smartTextActionButtons: [...document.querySelectorAll(".smart-text-action-button")],
+    smartTextReplacementField: document.querySelector("#smartTextReplacementField"),
+    smartTextReplacement: document.querySelector("#smartTextReplacement"),
+    smartTextMatchCount: document.querySelector("#smartTextMatchCount"),
+    smartTextToggleMatches: document.querySelector("#smartTextToggleMatches"),
+    smartTextMatchList: document.querySelector("#smartTextMatchList"),
+    applySmartTextButton: document.querySelector("#applySmartTextButton"),
+    applySmartTextButtonLabel: document.querySelector("#applySmartTextButtonLabel"),
     annotationOptions: document.querySelector("#annotationOptions"),
     annotationColor: document.querySelector("#annotationColor"),
     annotationColorValue: document.querySelector("#annotationColorValue"),
@@ -145,6 +169,7 @@
   const MIN_VIEW_ZOOM = 0.5;
   const MAX_VIEW_ZOOM = 4;
   const ROUGHNESS_LABELS = ["", "Neat", "Natural", "Loose", "Messy", "Scribbly"];
+  const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
 
   let imageLoaded = false;
   let imageName = "image";
@@ -155,6 +180,14 @@
   let textStyle = "bold";
   let annotationStyle = "clean";
   let annotationRoughness = 3;
+  let smartTextAction = "redact";
+  let smartTextWords = [];
+  let smartTextMatches = [];
+  let smartTextAnalyzing = false;
+  let smartTextRevision = null;
+  let ocrLibraryPromise = null;
+  let ocrWorkerPromise = null;
+  let documentRevision = 0;
   let frameEnabled = false;
   let aspectPreset = "square";
   let fixImageBlur = true;
@@ -785,6 +818,287 @@
     savePreference(STORAGE_KEYS.fixImageBlur, String(fixImageBlur));
     scheduleCurrentImageSave();
     updatePresentationUI();
+  }
+
+  function setSmartTextStatus(message, { progress = null, visible = true } = {}) {
+    elements.smartTextProgress.hidden = !visible;
+    elements.smartTextStatus.textContent = message;
+    if (progress !== null) elements.smartTextProgressBar.value = Math.max(0, Math.min(1, progress));
+  }
+
+  function readableOcrStatus(status) {
+    return {
+      "loading tesseract core": "Loading OCR engine…",
+      "initializing tesseract": "Starting OCR engine…",
+      "loading language traineddata": "Loading English text model…",
+      "initializing api": "Preparing text recognition…",
+      "recognizing text": "Reading image text…",
+    }[status] || "Analyzing image text…";
+  }
+
+  function loadOcrLibrary() {
+    if (window.Tesseract) return Promise.resolve(window.Tesseract);
+    if (ocrLibraryPromise) return ocrLibraryPromise;
+    ocrLibraryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = TESSERACT_SCRIPT_URL;
+      script.crossOrigin = "anonymous";
+      script.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error("OCR engine did not initialize."));
+      script.onerror = () => reject(new Error("OCR engine download failed."));
+      document.head.append(script);
+    });
+    return ocrLibraryPromise;
+  }
+
+  async function getOcrWorker() {
+    if (ocrWorkerPromise) return ocrWorkerPromise;
+    ocrWorkerPromise = loadOcrLibrary().then((tesseract) => tesseract.createWorker(
+      "eng",
+      tesseract.OEM?.LSTM_ONLY ?? 1,
+      {
+        logger(message) {
+          if (!smartTextAnalyzing) return;
+          setSmartTextStatus(readableOcrStatus(message.status), {
+            progress: Number.isFinite(message.progress) ? message.progress : 0,
+          });
+        },
+      },
+    ));
+    ocrWorkerPromise.catch(() => {
+      ocrWorkerPromise = null;
+      ocrLibraryPromise = null;
+    });
+    return ocrWorkerPromise;
+  }
+
+  function ocrInputCanvas() {
+    const maximumEdge = 3000;
+    const scale = Math.min(1, maximumEdge / Math.max(baseCanvas.width, baseCanvas.height));
+    if (scale === 1) return { canvas: baseCanvas, scale };
+    const ocrCanvas = document.createElement("canvas");
+    ocrCanvas.width = Math.max(1, Math.round(baseCanvas.width * scale));
+    ocrCanvas.height = Math.max(1, Math.round(baseCanvas.height * scale));
+    const ocrContext = ocrCanvas.getContext("2d");
+    ocrContext.imageSmoothingEnabled = true;
+    ocrContext.imageSmoothingQuality = "high";
+    ocrContext.drawImage(baseCanvas, 0, 0, ocrCanvas.width, ocrCanvas.height);
+    return { canvas: ocrCanvas, scale };
+  }
+
+  function scaleOcrWords(words, scale) {
+    if (scale === 1) return words;
+    return words.map((word) => ({
+      ...word,
+      bbox: {
+        x0: word.bbox.x0 / scale,
+        y0: word.bbox.y0 / scale,
+        x1: word.bbox.x1 / scale,
+        y1: word.bbox.y1 / scale,
+      },
+    }));
+  }
+
+  function resetSmartTextResults(message = "Image changed. Analyze again to refresh detected text.") {
+    smartTextWords = [];
+    smartTextMatches = [];
+    smartTextRevision = null;
+    elements.smartTextSearch.hidden = true;
+    elements.smartTextMatchList.replaceChildren();
+    elements.smartTextMatchCount.textContent = "Enter text to find matches";
+    elements.smartTextToggleMatches.disabled = true;
+    setSmartTextStatus(message, { progress: 0 });
+    syncSmartTextApplyState();
+    render();
+  }
+
+  function ensureSmartTextAnalysisIsFresh() {
+    if (smartTextRevision !== null && smartTextRevision !== documentRevision) resetSmartTextResults();
+  }
+
+  async function analyzeSmartText() {
+    if (!imageLoaded || smartTextAnalyzing) return;
+    smartTextAnalyzing = true;
+    smartTextWords = [];
+    smartTextMatches = [];
+    elements.smartTextSearch.hidden = true;
+    elements.analyzeTextButton.disabled = true;
+    elements.analyzeTextButton.lastElementChild.textContent = "Analyzing…";
+    setSmartTextStatus("Loading local OCR…", { progress: 0 });
+    renderSmartTextMatches();
+    const analyzedRevision = documentRevision;
+
+    try {
+      const worker = await getOcrWorker();
+      const input = ocrInputCanvas();
+      const result = await worker.recognize(input.canvas, {}, { blocks: true });
+      if (documentRevision !== analyzedRevision) throw new Error("The image changed during OCR. Analyze it again.");
+      smartTextWords = scaleOcrWords(extractOcrWords(result.data), input.scale);
+      smartTextRevision = documentRevision;
+      elements.smartTextSearch.hidden = false;
+      setSmartTextStatus(
+        smartTextWords.length
+          ? `Found ${smartTextWords.length} text ${smartTextWords.length === 1 ? "word" : "words"}. Search below to preview matches.`
+          : "No readable text was found in this image.",
+        { progress: 1 },
+      );
+      updateSmartTextMatches();
+      if (smartTextWords.length) elements.smartTextQuery.focus({ preventScroll: true });
+    } catch (error) {
+      resetSmartTextResults(error?.message || "Text analysis failed. Try again.");
+    } finally {
+      smartTextAnalyzing = false;
+      elements.analyzeTextButton.disabled = !imageLoaded;
+      elements.analyzeTextButton.lastElementChild.textContent = smartTextWords.length ? "Analyze again" : "Analyze image text";
+      syncSmartTextApplyState();
+    }
+  }
+
+  function selectedSmartTextMatches() {
+    return smartTextMatches.filter((match) => match.selected);
+  }
+
+  function syncSmartTextApplyState() {
+    const count = selectedSmartTextMatches().length;
+    const actionLabel = smartTextAction === "replace" ? "Replace" : "Redact";
+    elements.applySmartTextButtonLabel.textContent = count
+      ? `${actionLabel} ${count} selected`
+      : `${actionLabel} selected`;
+    elements.applySmartTextButton.disabled = smartTextAnalyzing
+      || count === 0
+      || smartTextRevision !== documentRevision
+      || (smartTextAction === "replace" && !elements.smartTextReplacement.value.trim());
+    const allSelected = smartTextMatches.length > 0 && count === smartTextMatches.length;
+    elements.smartTextToggleMatches.textContent = allSelected ? "Clear all" : "Select all";
+    elements.smartTextToggleMatches.disabled = smartTextMatches.length === 0;
+  }
+
+  function renderSmartTextMatches() {
+    elements.smartTextMatchList.replaceChildren();
+    smartTextMatches.forEach((match) => {
+      const label = document.createElement("label");
+      label.className = "smart-text-match";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = match.selected;
+      checkbox.addEventListener("change", () => {
+        match.selected = checkbox.checked;
+        syncSmartTextApplyState();
+        render();
+      });
+      const text = document.createElement("span");
+      text.textContent = match.text;
+      const confidence = document.createElement("small");
+      confidence.textContent = `${Math.round(match.confidence)}%`;
+      label.append(checkbox, text, confidence);
+      elements.smartTextMatchList.append(label);
+    });
+    const count = smartTextMatches.length;
+    elements.smartTextMatchCount.textContent = elements.smartTextQuery.value.trim()
+      ? `${count} ${count === 1 ? "match" : "matches"}`
+      : "Enter text to find matches";
+    syncSmartTextApplyState();
+    render();
+  }
+
+  function updateSmartTextMatches() {
+    ensureSmartTextAnalysisIsFresh();
+    if (!smartTextWords.length || smartTextRevision !== documentRevision) {
+      smartTextMatches = [];
+      renderSmartTextMatches();
+      return;
+    }
+    smartTextMatches = findPhraseMatches(smartTextWords, elements.smartTextQuery.value, {
+      caseSensitive: elements.smartTextCaseSensitive.checked,
+      wholeWord: elements.smartTextWholeWord.checked,
+    }).map((match) => ({ ...match, selected: true }));
+    renderSmartTextMatches();
+  }
+
+  function setSmartTextAction(action) {
+    smartTextAction = action === "replace" ? "replace" : "redact";
+    elements.smartTextActionButtons.forEach((button) => {
+      const active = button.dataset.smartAction === smartTextAction;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.smartTextReplacementField.hidden = smartTextAction !== "replace";
+    syncSmartTextApplyState();
+  }
+
+  function smartTextObject(match, imageData) {
+    const appearance = estimatePatchAppearance(imageData, match.bbox);
+    const bounds = paddedBounds(
+      match.bbox,
+      appearance.padding,
+      baseCanvas.width,
+      baseCanvas.height,
+    );
+    const replacing = smartTextAction === "replace";
+    return {
+      id: createObjectId(),
+      mode: replacing ? "text" : "mask",
+      pattern: "solid",
+      backgroundColor: appearance.backgroundColor,
+      text: replacing ? elements.smartTextReplacement.value.trim() : "",
+      textColor: appearance.textColor,
+      textFont: "sans",
+      textStyle: "normal",
+      fontSize: clampNumber((match.bbox.y1 - match.bbox.y0) * 0.72, 8, 160, 28),
+      autoTextSize: true,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      patternSpacing: 9,
+      patternLineWidth: 1.5,
+    };
+  }
+
+  function applySmartTextMatches() {
+    ensureSmartTextAnalysisIsFresh();
+    const matches = selectedSmartTextMatches();
+    if (!matches.length || elements.applySmartTextButton.disabled) return;
+    let imageData;
+    try {
+      imageData = baseContext.getImageData(0, 0, baseCanvas.width, baseCanvas.height);
+    } catch {
+      showToast("Patchwork could not sample colors from this image.");
+      return;
+    }
+    rememberHistoryStep();
+    placedObjects.push(...matches.map((match) => smartTextObject(match, imageData)));
+    activeObjectId = null;
+    selection = null;
+    rebuildBaseCanvas();
+    const action = smartTextAction === "replace" ? "Replaced" : "Redacted";
+    smartTextWords = [];
+    smartTextMatches = [];
+    smartTextRevision = null;
+    elements.smartTextSearch.hidden = true;
+    setSmartTextStatus(`${action} ${matches.length} ${matches.length === 1 ? "match" : "matches"}. Analyze again to find more text.`, { progress: 1 });
+    elements.analyzeTextButton.lastElementChild.textContent = "Analyze again";
+    renderSmartTextMatches();
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+    showToast(`${action} ${matches.length} text ${matches.length === 1 ? "match" : "matches"}.`);
+  }
+
+  function drawSmartTextPreview(targetContext) {
+    if (mode !== "smart" || smartTextRevision !== documentRevision || !smartTextMatches.length) return;
+    const displayScale = toolDisplayScale();
+    targetContext.save();
+    targetContext.fillStyle = "rgba(47, 111, 237, 0.16)";
+    targetContext.strokeStyle = "#2f6fed";
+    targetContext.lineWidth = Math.max(1, 2 * displayScale);
+    targetContext.setLineDash([5 * displayScale, 3 * displayScale]);
+    selectedSmartTextMatches().forEach((match) => {
+      const width = match.bbox.x1 - match.bbox.x0;
+      const height = match.bbox.y1 - match.bbox.y0;
+      targetContext.fillRect(match.bbox.x0, match.bbox.y0, width, height);
+      targetContext.strokeRect(match.bbox.x0, match.bbox.y0, width, height);
+    });
+    targetContext.restore();
   }
 
   function updatePreferenceLabels() {
@@ -2597,6 +2911,7 @@
     baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
     baseContext.drawImage(sourceCanvas, 0, 0);
     placedObjects.forEach((object) => drawPlacedObject(baseContext, object));
+    documentRevision += 1;
   }
 
   function rebuildSourceCanvas() {
@@ -2742,7 +3057,8 @@
     targetContext.save();
     targetContext.translate(transform.x, transform.y);
     targetContext.scale(transform.scale, transform.scale);
-    if (selectedObject) drawObjectSelection(targetContext, selectedObject);
+    if (mode === "smart") drawSmartTextPreview(targetContext);
+    else if (selectedObject) drawObjectSelection(targetContext, selectedObject);
     else drawCurrentTool(targetContext, true);
     targetContext.restore();
   }
@@ -2769,17 +3085,20 @@
     context.drawImage(sourceCanvas, 0, 0);
     placedObjects.forEach((object) => drawPlacedObject(context, object));
     const selectedObject = activeObject();
-    if (selectedObject) drawObjectSelection(context, selectedObject);
+    if (mode === "smart") drawSmartTextPreview(context);
+    else if (selectedObject) drawObjectSelection(context, selectedObject);
     else if (mode === "arrange" && activeImageLayer()) drawSelectionOutline(context);
     else drawCurrentTool(context, true);
   }
 
   function updateControls() {
+    if (mode === "smart" && !smartTextAnalyzing) ensureSmartTextAnalysisIsFresh();
     const selectedObject = activeObject();
     const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
     const hasToolSelection = ["arrow", "line"].includes(mode) ? arrowLength() >= 2 : hasAreaSelection;
-    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop"].includes(mode);
-    elements.applyButton.hidden = ["arrange", "crop"].includes(mode);
+    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop", "smart"].includes(mode);
+    elements.applyButton.hidden = ["arrange", "crop", "smart"].includes(mode);
+    elements.analyzeTextButton.disabled = !imageLoaded || smartTextAnalyzing;
     elements.clearSelectionButton.disabled = !selection;
     elements.undoButton.disabled = history.length === 0 || isRestoring;
     elements.redoButton.disabled = future.length === 0 || isRestoring;
@@ -2792,6 +3111,7 @@
       line: "Place line",
       arrange: "Arrange image",
       crop: "Crop image",
+      smart: "Analyze text",
     }[mode];
     updateFontSizeUI();
 
@@ -2805,6 +3125,8 @@
           ? "Select an image"
           : mode === "crop"
             ? "Drag crop area"
+            : mode === "smart"
+              ? "Analyze and find text"
             : (["arrow", "line"].includes(mode) ? `Drag a ${mode}` : "Draw a box")
         : "Add an image first";
     }
@@ -2827,8 +3149,9 @@
       activeImageLayerId = null;
       if (!activeObjectId) selection = null;
     }
-    mode = ["arrange", "mask", "blur", "text", "circle", "arrow", "line", "crop"].includes(nextMode) ? nextMode : "mask";
+    mode = ["arrange", "mask", "blur", "text", "smart", "circle", "arrow", "line", "crop"].includes(nextMode) ? nextMode : "mask";
     const isText = mode === "text";
+    const isSmartText = mode === "smart";
     const isAnnotation = ["circle", "arrow", "line"].includes(mode);
     const isBlur = mode === "blur";
     [
@@ -2836,6 +3159,7 @@
       [elements.maskModeButton, "mask"],
       [elements.blurModeButton, "blur"],
       [elements.textModeButton, "text"],
+      [elements.smartTextModeButton, "smart"],
       [elements.circleModeButton, "circle"],
       [elements.arrowModeButton, "arrow"],
       [elements.lineModeButton, "line"],
@@ -2847,6 +3171,7 @@
     });
     elements.patchFillOptions.hidden = !["mask", "text"].includes(mode);
     elements.textOptions.hidden = !isText;
+    elements.smartTextOptions.hidden = !isSmartText;
     elements.blurOptions.hidden = !isBlur;
     elements.annotationOptions.hidden = !isAnnotation;
     elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
@@ -2856,12 +3181,15 @@
       arrowStart = { x: selection.x, y: selection.y };
       arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
     }
-    if (loadSettings) applyToolSettings(mode);
+    if (loadSettings && !isSmartText) applyToolSettings(mode);
+    if (isSmartText) ensureSmartTextAnalysisIsFresh();
     if (imageLoaded) {
       elements.workspaceTip.textContent = mode === "arrange"
         ? "Click an image · drag to move · corners resize"
         : mode === "crop"
           ? "Drag a box to crop immediately"
+          : mode === "smart"
+            ? "Analyze text · search phrases · preview every match"
           : "Drag to place · click an item to edit";
     }
     updateControls();
@@ -3376,6 +3704,7 @@
     if (!imageLoaded || panModeEnabled || event.button !== 0) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
+    if (mode === "smart") return;
     canvas.setPointerCapture(event.pointerId);
     const point = canvasPoint(event);
     if (mode === "arrange") {
@@ -3443,6 +3772,10 @@
 
   canvas.addEventListener("pointermove", (event) => {
     const currentPoint = canvasPoint(event);
+    if (mode === "smart" && !imageLayerInteraction && !objectInteraction && !selectionInteraction) {
+      canvas.style.cursor = "default";
+      return;
+    }
     if (imageLayerInteraction) {
       updateImageLayerInteraction(currentPoint);
       return;
@@ -3593,7 +3926,7 @@
       return;
     }
 
-    if (event.key === " " && !selection && !["arrange", "crop"].includes(mode)) {
+    if (event.key === " " && !selection && !["arrange", "crop", "smart"].includes(mode)) {
       event.preventDefault();
       selection = {
         x: documentWidth() * 0.25,
@@ -3645,10 +3978,25 @@
   elements.maskModeButton.addEventListener("click", () => setMode("mask"));
   elements.blurModeButton.addEventListener("click", () => setMode("blur"));
   elements.textModeButton.addEventListener("click", () => setMode("text"));
+  elements.smartTextModeButton.addEventListener("click", () => setMode("smart"));
   elements.circleModeButton.addEventListener("click", () => setMode("circle"));
   elements.arrowModeButton.addEventListener("click", () => setMode("arrow"));
   elements.lineModeButton.addEventListener("click", () => setMode("line"));
   elements.cropModeButton.addEventListener("click", () => setMode("crop"));
+  elements.analyzeTextButton.addEventListener("click", analyzeSmartText);
+  elements.smartTextQuery.addEventListener("input", updateSmartTextMatches);
+  elements.smartTextCaseSensitive.addEventListener("change", updateSmartTextMatches);
+  elements.smartTextWholeWord.addEventListener("change", updateSmartTextMatches);
+  elements.smartTextActionButtons.forEach((button) => {
+    button.addEventListener("click", () => setSmartTextAction(button.dataset.smartAction));
+  });
+  elements.smartTextReplacement.addEventListener("input", syncSmartTextApplyState);
+  elements.smartTextToggleMatches.addEventListener("click", () => {
+    const selectAll = selectedSmartTextMatches().length !== smartTextMatches.length;
+    smartTextMatches.forEach((match) => { match.selected = selectAll; });
+    renderSmartTextMatches();
+  });
+  elements.applySmartTextButton.addEventListener("click", applySmartTextMatches);
   elements.patternButtons.forEach((button) => {
     button.addEventListener("click", () => {
       setPattern(button.dataset.patchPattern);

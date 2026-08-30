@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260830.1" />
+    <link rel="stylesheet" href="styles.css?v=20260830.3" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -65,6 +65,9 @@
               </button>
               <button class="segment" id="textModeButton" type="button" aria-pressed="false">
                 <span class="text-glyph" aria-hidden="true">Aa</span> Replace text
+              </button>
+              <button class="segment" id="smartTextModeButton" type="button" aria-pressed="false">
+                <span class="smart-text-glyph" aria-hidden="true">⌕</span> Smart text
               </button>
               <button class="segment" id="circleModeButton" type="button" aria-pressed="false">
                 <span class="annotation-glyph circle-glyph" aria-hidden="true"></span> Circle
@@ -164,6 +167,50 @@
                 <input id="autoTextSize" type="checkbox" checked />
                 <span><strong>Auto size with patch</strong><small>Fits text to the box height and width.</small></span>
               </label>
+            </div>
+
+            <div class="smart-text-options" id="smartTextOptions" hidden>
+              <p class="smart-text-intro">Find text locally, then redact or replace every selected match.</p>
+              <button class="button button-secondary smart-analyze-button" id="analyzeTextButton" type="button">
+                <span aria-hidden="true">⌕</span>
+                <span>Analyze image text</span>
+              </button>
+              <div class="smart-text-progress" id="smartTextProgress" hidden>
+                <progress id="smartTextProgressBar" max="1" value="0"></progress>
+                <p id="smartTextStatus" role="status" aria-live="polite">Ready to analyze.</p>
+              </div>
+
+              <div class="smart-text-search" id="smartTextSearch" hidden>
+                <label class="stacked-field" for="smartTextQuery">
+                  <span>Find word or phrase</span>
+                  <input id="smartTextQuery" type="search" placeholder="e.g. Garrett Allen" autocomplete="off" />
+                </label>
+                <div class="smart-text-flags">
+                  <label><input id="smartTextCaseSensitive" type="checkbox" /> Case sensitive</label>
+                  <label><input id="smartTextWholeWord" type="checkbox" checked /> Whole words</label>
+                </div>
+
+                <div class="segmented-control smart-text-action" role="group" aria-label="Bulk text action">
+                  <button class="segment smart-text-action-button is-active" type="button" data-smart-action="redact" aria-pressed="true">Redact</button>
+                  <button class="segment smart-text-action-button" type="button" data-smart-action="replace" aria-pressed="false">Replace</button>
+                </div>
+
+                <label class="stacked-field" id="smartTextReplacementField" for="smartTextReplacement" hidden>
+                  <span>Replacement text</span>
+                  <input id="smartTextReplacement" type="text" placeholder="e.g. [REDACTED]" autocomplete="off" />
+                </label>
+
+                <div class="smart-text-results-heading">
+                  <strong id="smartTextMatchCount">Enter text to find matches</strong>
+                  <button class="text-button" id="smartTextToggleMatches" type="button" disabled>Select all</button>
+                </div>
+                <div class="smart-text-match-list" id="smartTextMatchList"></div>
+                <button class="apply-button smart-text-apply" id="applySmartTextButton" type="button" disabled>
+                  <span id="applySmartTextButtonLabel">Redact selected</span>
+                  <span aria-hidden="true">+</span>
+                </button>
+              </div>
+              <p class="smart-text-privacy">OCR runs in this browser. The first scan downloads and caches the OCR engine and English model; your image is never uploaded.</p>
             </div>
 
             <div class="annotation-options" id="annotationOptions" hidden>
@@ -356,7 +403,8 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="smart-text.js?v=20260830.1"></script>
     <script src="share-layout.js?v=20260830.2"></script>
-    <script src="app.js?v=20260830.2"></script>
+    <script src="app.js?v=20260830.3"></script>
   </body>
 </html>

@@ -390,6 +390,12 @@ kbd {
   font-weight: 700;
 }
 
+.smart-text-glyph {
+  width: 15px;
+  font: 800 18px/1 var(--utility);
+  text-align: center;
+}
+
 .arrange-glyph,
 .blur-glyph,
 .crop-glyph {
@@ -408,6 +414,130 @@ kbd {
   font-size: 17px;
   font-weight: 750;
   line-height: 1;
+}
+
+.smart-text-options {
+  display: grid;
+  gap: 12px;
+}
+
+.smart-text-options[hidden],
+.smart-text-progress[hidden],
+.smart-text-search[hidden] {
+  display: none;
+}
+
+.smart-text-intro,
+.smart-text-privacy,
+.smart-text-progress p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.smart-analyze-button {
+  justify-content: center;
+  width: 100%;
+}
+
+.smart-text-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.smart-text-progress progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  accent-color: var(--blue);
+}
+
+.smart-text-search {
+  display: grid;
+  gap: 12px;
+}
+
+.smart-text-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  color: #4c5870;
+  font-size: 10px;
+}
+
+.smart-text-flags label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.smart-text-action {
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+}
+
+.smart-text-results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.smart-text-results-heading strong {
+  color: #3d4960;
+  font-size: 10px;
+}
+
+.smart-text-match-list {
+  display: grid;
+  max-height: 178px;
+  gap: 5px;
+  overflow-y: auto;
+}
+
+.smart-text-match {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 38px;
+  padding: 6px 8px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.smart-text-match:hover {
+  border-color: var(--line-strong);
+}
+
+.smart-text-match span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-text-match small {
+  color: var(--muted);
+  font: 8px var(--utility);
+}
+
+.smart-text-apply {
+  margin-top: 0;
+}
+
+.smart-text-privacy {
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
 }
 
 .circle-glyph {
