@@ -7,6 +7,7 @@ const {
   inferFontFamily,
   inferFontWeight,
   paddedBounds,
+  fitTextVerticalBounds,
 } = require("../smart-text.js");
 
 test("extracts word geometry from Tesseract block output in reading order", () => {
@@ -103,4 +104,30 @@ test("estimates surrounding background and contrasting text colors", () => {
     width: 14,
     height: 10,
   });
+});
+
+test("expands replacement bounds to preserve descenders below the OCR baseline", () => {
+  assert.deepEqual(
+    fitTextVerticalBounds(
+      { x: 20, y: 10, width: 80, height: 20 },
+      28,
+      18,
+      8,
+      2,
+      100,
+    ),
+    { x: 20, y: 8, width: 80, height: 30, baselineY: 28 },
+  );
+
+  const edge = fitTextVerticalBounds(
+    { x: 20, y: 80, width: 80, height: 20 },
+    99,
+    18,
+    8,
+    2,
+    100,
+  );
+  assert.equal(edge.baselineY, 90);
+  assert.equal(edge.y, 70);
+  assert.equal(edge.height, 30);
 });

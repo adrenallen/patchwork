@@ -225,6 +225,37 @@
     return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
   }
 
+  function fitTextVerticalBounds(bounds, baselineY, ascent, descent, padding, imageHeight) {
+    const canvasHeight = Math.max(1, Number(imageHeight) || 1);
+    const safeAscent = Math.max(0, Number(ascent) || 0);
+    const safeDescent = Math.max(0, Number(descent) || 0);
+    const safePadding = Math.max(0, Number(padding) || 0);
+    const originalY = Math.max(0, Math.min(canvasHeight - 1, Number(bounds.y) || 0));
+    const originalBottom = Math.max(
+      originalY + 1,
+      Math.min(canvasHeight, originalY + Math.max(1, Number(bounds.height) || 1)),
+    );
+    const minimumBaseline = safePadding + safeAscent;
+    const maximumBaseline = canvasHeight - safePadding - safeDescent;
+    let fittedBaseline = Number.isFinite(Number(baselineY)) ? Number(baselineY) : originalBottom;
+    if (minimumBaseline <= maximumBaseline) {
+      fittedBaseline = Math.max(minimumBaseline, Math.min(maximumBaseline, fittedBaseline));
+    } else {
+      fittedBaseline = (canvasHeight - safeAscent - safeDescent) / 2 + safeAscent;
+    }
+
+    const inkTop = Math.floor(fittedBaseline - safeAscent - safePadding);
+    const inkBottom = Math.ceil(fittedBaseline + safeDescent + safePadding);
+    const y = Math.max(0, Math.min(originalY, inkTop));
+    const bottom = Math.min(canvasHeight, Math.max(originalBottom, inkBottom));
+    return {
+      ...bounds,
+      y,
+      height: Math.max(1, bottom - y),
+      baselineY: fittedBaseline,
+    };
+  }
+
   return {
     extractOcrWords,
     findPhraseMatches,
@@ -232,5 +263,6 @@
     inferFontFamily,
     inferFontWeight,
     paddedBounds,
+    fitTextVerticalBounds,
   };
 }));

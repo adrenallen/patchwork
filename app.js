@@ -7,6 +7,7 @@
     inferFontFamily,
     inferFontWeight,
     paddedBounds,
+    fitTextVerticalBounds,
   } = window.PatchworkSmartText;
   const canvas = document.querySelector("#editorCanvas");
   const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -1306,12 +1307,16 @@
     const replacing = smartTextAction === "replace";
     const style = smartTextResolvedStyle(match);
     const replacement = replacing ? elements.smartTextReplacement.value.trim() : "";
+    let baselineY = match.baseline
+      ? (Number(match.baseline.y0) + Number(match.baseline.y1)) / 2
+      : match.bbox.y1;
     let textStartX = match.bbox.x0;
     if (replacing && replacement) {
       baseContext.save();
       baseContext.font = `${style.weight === "bold" ? 700 : 400} ${style.fontSize}px ${fontFamilyFor(style.family)}`;
-      const measuredWidth = baseContext.measureText(replacement).width;
+      const textMetrics = baseContext.measureText(replacement);
       baseContext.restore();
+      const measuredWidth = textMetrics.width;
       const textPadding = Math.max(1, appearance.padding);
       const desiredWidth = Math.min(baseCanvas.width, Math.ceil(measuredWidth + textPadding * 2));
       if (desiredWidth > bounds.width) {
@@ -1324,10 +1329,18 @@
         bounds.x + textPadding,
         Math.min(match.bbox.x0, bounds.x + bounds.width - measuredWidth - textPadding),
       );
+      const verticalPadding = Math.max(1, Math.min(appearance.padding, style.fontSize * 0.18));
+      const fittedBounds = fitTextVerticalBounds(
+        bounds,
+        baselineY,
+        textMetrics.actualBoundingBoxAscent || style.fontSize * 0.8,
+        textMetrics.actualBoundingBoxDescent || style.fontSize * 0.24,
+        verticalPadding,
+        baseCanvas.height,
+      );
+      bounds = fittedBounds;
+      baselineY = fittedBounds.baselineY;
     }
-    const baselineY = match.baseline
-      ? (Number(match.baseline.y0) + Number(match.baseline.y1)) / 2
-      : match.bbox.y1;
     return {
       id: createId ? createObjectId() : null,
       mode: replacing ? "text" : "mask",
@@ -3308,10 +3321,23 @@
         targetContext.font = objectFont(object, size);
         targetContext.textAlign = "left";
         targetContext.textBaseline = hasDetectedBaseline ? "alphabetic" : "middle";
+        let textY = object.y + object.height / 2;
+        if (hasDetectedBaseline) {
+          const textMetrics = targetContext.measureText(object.text);
+          const ascent = textMetrics.actualBoundingBoxAscent || size * 0.8;
+          const descent = textMetrics.actualBoundingBoxDescent || size * 0.24;
+          const verticalPadding = Math.max(1, Math.min(size * 0.12, object.height * 0.08));
+          const minimumBaseline = object.y + verticalPadding + ascent;
+          const maximumBaseline = object.y + object.height - verticalPadding - descent;
+          const desiredBaseline = object.y + object.height * Number(object.textBaselineRatio);
+          textY = minimumBaseline <= maximumBaseline
+            ? Math.max(minimumBaseline, Math.min(maximumBaseline, desiredBaseline))
+            : object.y + (object.height - ascent - descent) / 2 + ascent;
+        }
         targetContext.fillText(
           object.text,
           object.x + padding,
-          hasDetectedBaseline ? object.y + object.height * Number(object.textBaselineRatio) : object.y + object.height / 2,
+          textY,
         );
       }
       targetContext.restore();
