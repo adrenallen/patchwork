@@ -80,7 +80,7 @@
     ratioButtons: [...document.querySelectorAll(".ratio-button")],
     outputWidth: document.querySelector("#outputWidth"),
     outputHeight: document.querySelector("#outputHeight"),
-    matchImageRatio: document.querySelector("#matchImageRatio"),
+    fixImageBlur: document.querySelector("#fixImageBlur"),
     customSizeNote: document.querySelector("#customSizeNote"),
     gradientButtons: [...document.querySelectorAll(".gradient-button")],
     framePadding: document.querySelector("#framePadding"),
@@ -113,7 +113,7 @@
     aspectPreset: "patchwork.aspectPreset",
     outputWidth: "patchwork.outputWidth",
     outputHeight: "patchwork.outputHeight",
-    matchImageRatio: "patchwork.matchImageRatio",
+    fixImageBlur: "patchwork.fixImageBlur",
     gradient: "patchwork.gradient",
     framePadding: "patchwork.framePadding",
     cornerRadius: "patchwork.cornerRadius",
@@ -157,7 +157,7 @@
   let annotationRoughness = 3;
   let frameEnabled = false;
   let aspectPreset = "square";
-  let matchImageRatio = true;
+  let fixImageBlur = true;
   let gradientName = "dusk";
   let reflectionEnabled = false;
   let blurStyle = "gaussian";
@@ -510,16 +510,22 @@
     applyToolSettings("mask");
     frameEnabled = readPreference(STORAGE_KEYS.frameEnabled, "false") === "true";
     reflectionEnabled = readPreference(STORAGE_KEYS.reflectionEnabled, "false") === "true";
-    aspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "square");
-    matchImageRatio = readPreference(STORAGE_KEYS.matchImageRatio, "true") === "true";
-    if (matchImageRatio) aspectPreset = "source";
+    const savedAspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "square");
+    const migrateSourceRatio = savedAspectPreset === "source";
+    aspectPreset = migrateSourceRatio ? "square" : savedAspectPreset;
+    fixImageBlur = readPreference(STORAGE_KEYS.fixImageBlur, "true") === "true";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
     elements.frameEnabled.checked = frameEnabled;
     elements.reflectionEnabled.checked = reflectionEnabled;
-    elements.matchImageRatio.checked = matchImageRatio;
-    elements.outputWidth.value = String(clampNumber(readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
-    elements.outputHeight.value = String(clampNumber(readPreference(STORAGE_KEYS.outputHeight, "1600"), 1, 12000, 1600));
+    elements.fixImageBlur.checked = fixImageBlur;
+    elements.outputWidth.value = String(clampNumber(migrateSourceRatio ? "1600" : readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
+    elements.outputHeight.value = String(clampNumber(migrateSourceRatio ? "1600" : readPreference(STORAGE_KEYS.outputHeight, "1600"), 1, 12000, 1600));
+    if (migrateSourceRatio) {
+      savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
+      savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
+      savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
+    }
     elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 24, 10));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
     updatePresentationUI();
@@ -644,7 +650,7 @@
       contentHeight: documentHeight(),
       paddingPercent: Number(elements.framePadding.value),
       reflection: reflectionEnabled,
-      preserveContentScale: matchImageRatio,
+      fixImageBlur,
     });
   }
 
@@ -699,7 +705,7 @@
   function updatePresentationUI() {
     elements.frameEnabled.checked = frameEnabled;
     elements.reflectionEnabled.checked = reflectionEnabled;
-    elements.matchImageRatio.checked = matchImageRatio;
+    elements.fixImageBlur.checked = fixImageBlur;
     elements.frameToggleLabel.textContent = frameEnabled ? "On" : "Off";
     elements.presentationControls.hidden = !frameEnabled;
     elements.framePaddingValue.value = `${elements.framePadding.value}%`;
@@ -717,12 +723,12 @@
     });
 
     const presetButton = elements.ratioButtons.find((button) => button.dataset.aspect === aspectPreset);
-    if (matchImageRatio) {
+    if (fixImageBlur) {
       if (imageLoaded) {
         const layout = getShareLayout();
         elements.customSizeNote.textContent = layout.constrained
           ? `Canvas limit reached · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`
-          : `Keeps the edit surface crisp · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`;
+          : `Original pixels preserved · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`;
       } else {
         elements.customSizeNote.textContent = "Waiting for an image · pixels";
       }
@@ -735,12 +741,9 @@
   }
 
   function setAspectPreset(button) {
-    matchImageRatio = false;
     aspectPreset = button.dataset.aspect;
-    elements.matchImageRatio.checked = false;
     elements.outputWidth.value = button.dataset.width;
     elements.outputHeight.value = button.dataset.height;
-    savePreference(STORAGE_KEYS.matchImageRatio, "false");
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
     savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
@@ -748,34 +751,12 @@
     updatePresentationUI();
   }
 
-  function syncOutputToSourceSize() {
-    if (!imageLoaded) return;
-    aspectPreset = "source";
-    elements.outputWidth.value = String(baseCanvas.width);
-    elements.outputHeight.value = String(baseCanvas.height);
-    savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
-    savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
-    savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-  }
-
-  function setCustomDimensions(changedInput) {
-    let width = Number(elements.outputWidth.value);
-    let height = Number(elements.outputHeight.value);
+  function setCustomDimensions() {
+    const width = Number(elements.outputWidth.value);
+    const height = Number(elements.outputHeight.value);
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
 
-    if (matchImageRatio && imageLoaded) {
-      const sourceRatio = baseCanvas.width / baseCanvas.height;
-      if (changedInput === elements.outputHeight) {
-        width = Math.max(1, Math.round(height * sourceRatio));
-        elements.outputWidth.value = String(width);
-      } else {
-        height = Math.max(1, Math.round(width / sourceRatio));
-        elements.outputHeight.value = String(height);
-      }
-      aspectPreset = "source";
-    } else {
-      aspectPreset = "custom";
-    }
+    aspectPreset = "custom";
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
     savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
@@ -784,19 +765,7 @@
   }
 
   function normalizeDimensionInputs() {
-    let dimensions = getRequestedOutputDimensions();
-    if (matchImageRatio && imageLoaded) {
-      const sourceRatio = baseCanvas.width / baseCanvas.height;
-      dimensions = {
-        width: dimensions.width,
-        height: Math.max(1, Math.round(dimensions.width / sourceRatio)),
-      };
-      if (dimensions.width * dimensions.height > 48_000_000) {
-        const scale = Math.sqrt(48_000_000 / (dimensions.width * dimensions.height));
-        dimensions.width = Math.max(1, Math.floor(dimensions.width * scale));
-        dimensions.height = Math.max(1, Math.floor(dimensions.height * scale));
-      }
-    }
+    const dimensions = getRequestedOutputDimensions();
     elements.outputWidth.value = String(dimensions.width);
     elements.outputHeight.value = String(dimensions.height);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
@@ -811,16 +780,9 @@
     updatePresentationUI();
   }
 
-  function setMatchImageRatio(enabled) {
-    matchImageRatio = enabled;
-    savePreference(STORAGE_KEYS.matchImageRatio, String(matchImageRatio));
-    if (matchImageRatio) {
-      aspectPreset = "source";
-      syncOutputToSourceSize();
-    } else {
-      aspectPreset = "custom";
-      savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
-    }
+  function setFixImageBlur(enabled) {
+    fixImageBlur = enabled;
+    savePreference(STORAGE_KEYS.fixImageBlur, String(fixImageBlur));
     scheduleCurrentImageSave();
     updatePresentationUI();
   }
@@ -1330,7 +1292,6 @@
     currentImageId = id;
     imageLabel = label || "Pasted image";
     imageName = name || "pasted-image";
-    if (matchImageRatio) syncOutputToSourceSize();
     selection = null;
     selectionInteraction = null;
     arrowStart = null;
@@ -3027,7 +2988,6 @@
       selection = null;
       arrowStart = null;
       arrowEnd = null;
-      if (matchImageRatio) syncOutputToSourceSize();
       fitView({ notify: false });
       isRestoring = false;
       renderLayers();
@@ -3052,7 +3012,6 @@
       selection = null;
       arrowStart = null;
       arrowEnd = null;
-      if (matchImageRatio) syncOutputToSourceSize();
       fitView({ notify: false });
       isRestoring = false;
       renderLayers();
@@ -3191,7 +3150,6 @@
     arrowStart = null;
     arrowEnd = null;
     rebuildBaseCanvas();
-    if (matchImageRatio) syncOutputToSourceSize();
     fitView({ notify: false });
     updatePresentationUI();
     renderLayers();
@@ -3748,8 +3706,8 @@
   elements.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setAspectPreset(button));
   });
-  elements.matchImageRatio.addEventListener("change", () => {
-    setMatchImageRatio(elements.matchImageRatio.checked);
+  elements.fixImageBlur.addEventListener("change", () => {
+    setFixImageBlur(elements.fixImageBlur.checked);
   });
   elements.gradientButtons.forEach((button) => {
     button.addEventListener("click", () => setGradient(button.dataset.gradient));

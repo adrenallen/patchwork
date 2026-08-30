@@ -235,15 +235,15 @@
               </fieldset>
 
               <fieldset class="control-group">
-                <legend>Editable canvas size</legend>
+                <legend>Canvas size</legend>
                 <div class="dimension-fields">
                   <label for="outputWidth"><span>Width</span><input id="outputWidth" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
                   <span aria-hidden="true">×</span>
                   <label for="outputHeight"><span>Height</span><input id="outputHeight" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
                 </div>
-                <label class="match-ratio-control" for="matchImageRatio">
-                  <input id="matchImageRatio" type="checkbox" checked />
-                  <span><strong>Match image ratio</strong><small>Keeps source pixels crisp; Share canvas grows around the edit.</small></span>
+                <label class="match-ratio-control" for="fixImageBlur">
+                  <input id="fixImageBlur" type="checkbox" checked />
+                  <span><strong>Fix image blur</strong><small>Keeps the image at 1:1 pixels; canvas grows to preserve this aspect.</small></span>
                 </label>
                 <p class="custom-size-note" id="customSizeNote">Waiting for an image · pixels</p>
               </fieldset>

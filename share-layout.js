@@ -38,7 +38,7 @@
     contentHeight,
     paddingPercent = 0,
     reflection = false,
-    preserveContentScale = false,
+    fixImageBlur = false,
     maxDimension = DEFAULT_MAX_DIMENSION,
     maxPixels = DEFAULT_MAX_PIXELS,
   }) {
@@ -52,7 +52,9 @@
     };
     const paddingRatio = Math.max(0, Math.min(0.49, Number(paddingPercent) / 100 || 0));
     const availableRatio = Math.max(0.02, 1 - paddingRatio * 2);
-    const desiredScale = Math.min(requested.width / content.width, requested.height / content.height);
+    const desiredScale = fixImageBlur
+      ? 1
+      : Math.min(requested.width / content.width, requested.height / content.height);
     const desiredWidth = content.width * desiredScale;
     const desiredHeight = content.height * desiredScale;
     const desiredReflectionHeight = reflection ? desiredHeight * 0.22 : 0;
@@ -60,7 +62,7 @@
 
     let outputWidth = requested.width;
     let outputHeight = requested.height;
-    if (preserveContentScale) {
+    if (fixImageBlur) {
       const requiredWidth = desiredWidth / availableRatio;
       const requiredHeight = (desiredHeight + desiredReflectionHeight + desiredReflectionGap) / availableRatio;
       const expansion = Math.max(1, requiredWidth / requested.width, requiredHeight / requested.height);
@@ -81,7 +83,7 @@
       availableWidth / content.width,
       availableHeight / (content.height * reflectionSpace),
     );
-    const scale = preserveContentScale && !dimensions.constrained ? desiredScale : fittedScale;
+    const scale = fixImageBlur && !dimensions.constrained ? desiredScale : fittedScale;
     const width = content.width * scale;
     const height = content.height * scale;
     const reflectionHeight = reflection ? height * 0.22 : 0;
