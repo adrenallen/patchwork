@@ -108,27 +108,11 @@ canvas:focus-visible {
 }
 
 .brand-mark {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: block;
   flex: 0 0 auto;
   width: 38px;
   height: 38px;
-  padding: 6px;
-  gap: 3px;
-  border-radius: 11px;
-  background: var(--ink);
-  box-shadow: 0 5px 14px rgba(20, 33, 61, 0.24);
-}
-
-.brand-mark span {
-  border: 1.5px solid rgba(255, 255, 255, 0.58);
-  border-radius: 2px;
-}
-
-.brand-mark span:nth-child(4) {
-  background: #78a3ff;
-  border-color: #78a3ff;
+  object-fit: contain;
 }
 
 .brand h1 {

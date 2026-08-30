@@ -1,5 +1,7 @@
 # Patchwork
 
+![Patchwork logo](assets/patchwork-logo.png)
+
 Patchwork is a fast, local image redaction and screenshot-markup tool. Paste, drop, or open images; arrange them in layers; then mask, blur, crop, label, and annotate without uploading anything.
 
 ## Preview
