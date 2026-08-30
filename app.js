@@ -1,12 +1,13 @@
 (() => {
+  const { calculateShareLayout, mapDocumentBounds, unmapShareBounds } = window.PatchworkShareLayout;
   const canvas = document.querySelector("#editorCanvas");
   const context = canvas.getContext("2d", { willReadFrequently: true });
   const baseCanvas = document.createElement("canvas");
   const baseContext = baseCanvas.getContext("2d", { willReadFrequently: true });
   const sourceCanvas = document.createElement("canvas");
   const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
-  const shareReflectionSource = document.createElement("canvas");
-  const shareReflectionSourceContext = shareReflectionSource.getContext("2d", { willReadFrequently: true });
+  const shareContentSurface = document.createElement("canvas");
+  const shareContentSurfaceContext = shareContentSurface.getContext("2d", { willReadFrequently: true });
   const shareReflectionCanvas = document.createElement("canvas");
   const shareReflectionContext = shareReflectionCanvas.getContext("2d");
 
@@ -194,11 +195,9 @@
   let imageSaveTimer = null;
   let imageSaveQueue = Promise.resolve(true);
   let recentImageUrls = [];
-  const layerSurfaceCache = new Map();
   let isSwitchingImages = false;
   let imageStorageWarningShown = false;
   let toastTimer = null;
-  let outputResizeLayerEntries = null;
 
   function readPreference(key, fallback) {
     try {
@@ -235,7 +234,15 @@
   }
 
   function storedImageLayers(layers = imageLayers) {
-    return layers.map(({ image, ...layer }) => ({ ...layer }));
+    return layers.map(({
+      image,
+      shareCustomized,
+      shareX,
+      shareY,
+      shareWidth,
+      shareHeight,
+      ...layer
+    }) => ({ ...layer }));
   }
 
   async function hydrateImageLayers(layers = []) {
@@ -616,7 +623,7 @@
     updatePreferenceLabels();
   }
 
-  function getOutputDimensions() {
+  function getRequestedOutputDimensions() {
     let width = clampNumber(elements.outputWidth.value, 1, 12000, imageLoaded ? baseCanvas.width : 1600);
     let height = clampNumber(elements.outputHeight.value, 1, 12000, imageLoaded ? baseCanvas.height : 1600);
     const pixelLimit = 48_000_000;
@@ -628,6 +635,23 @@
     return { width, height };
   }
 
+  function getShareLayout() {
+    const requested = getRequestedOutputDimensions();
+    return calculateShareLayout({
+      requestedWidth: requested.width,
+      requestedHeight: requested.height,
+      contentWidth: documentWidth(),
+      contentHeight: documentHeight(),
+      paddingPercent: Number(elements.framePadding.value),
+      reflection: reflectionEnabled,
+      preserveContentScale: matchImageRatio,
+    });
+  }
+
+  function getOutputDimensions() {
+    return frameEnabled ? getShareLayout().dimensions : getRequestedOutputDimensions();
+  }
+
   function documentWidth() {
     return sourceCanvas.width || baseCanvas.width || 1;
   }
@@ -636,122 +660,22 @@
     return sourceCanvas.height || baseCanvas.height || 1;
   }
 
-  function boundsUnion(boundsList) {
-    const validBounds = boundsList.filter((bounds) => bounds && bounds.width > 0 && bounds.height > 0);
-    if (!validBounds.length) return null;
-    const left = Math.min(...validBounds.map((bounds) => bounds.x));
-    const top = Math.min(...validBounds.map((bounds) => bounds.y));
-    const right = Math.max(...validBounds.map((bounds) => bounds.x + bounds.width));
-    const bottom = Math.max(...validBounds.map((bounds) => bounds.y + bounds.height));
-    return { x: left, y: top, width: right - left, height: bottom - top };
-  }
-
-  function visibleDocumentLayerBounds() {
-    return boundsUnion(imageLayers
-      .filter((layer) => layer.visible !== false)
-      .map((layer) => ({ x: layer.x, y: layer.y, width: layer.width, height: layer.height }))) || {
-      x: 0,
-      y: 0,
-      width: documentWidth(),
-      height: documentHeight(),
-    };
-  }
-
-  function shareFitTransform(contentBounds, padding = Number(elements.framePadding.value), withReflection = reflectionEnabled) {
-    const dimensions = getOutputDimensions();
-    const paddingRatio = padding / 100;
-    const availableWidth = Math.max(1, dimensions.width * (1 - paddingRatio * 2));
-    const availableHeight = Math.max(1, dimensions.height * (1 - paddingRatio * 2));
-    const reflectionSpace = withReflection ? 1.24 : 1;
-    const scale = Math.min(
-      availableWidth / Math.max(1, contentBounds.width),
-      availableHeight / Math.max(1, contentBounds.height * reflectionSpace),
-    );
-    const width = contentBounds.width * scale;
-    const height = contentBounds.height * scale;
-    const reflectionHeight = withReflection ? height * 0.22 : 0;
-    const reflectionGap = withReflection ? Math.max(3, height * 0.018) : 0;
-    return {
-      scale,
-      x: (dimensions.width - width) / 2,
-      y: (dimensions.height - height - reflectionHeight - reflectionGap) / 2,
-      width,
-      height,
-      sourceX: contentBounds.x,
-      sourceY: contentBounds.y,
-      dimensions,
-    };
-  }
-
   function shareContentTransform() {
-    return shareFitTransform({ x: 0, y: 0, width: documentWidth(), height: documentHeight() });
-  }
-
-  function defaultShareLayerBounds(layer) {
-    const transform = shareFitTransform(visibleDocumentLayerBounds());
-    return {
-      x: transform.x + (layer.x - transform.sourceX) * transform.scale,
-      y: transform.y + (layer.y - transform.sourceY) * transform.scale,
-      width: layer.width * transform.scale,
-      height: layer.height * transform.scale,
-    };
+    return getShareLayout().content;
   }
 
   function imageLayerBounds(layer) {
     if (!frameEnabled) return { x: layer.x, y: layer.y, width: layer.width, height: layer.height };
-    const dimensions = getOutputDimensions();
-    if (layer.shareCustomized && [layer.shareX, layer.shareY, layer.shareWidth, layer.shareHeight].every(Number.isFinite)) {
-      return {
-        x: layer.shareX * dimensions.width,
-        y: layer.shareY * dimensions.height,
-        width: layer.shareWidth * dimensions.width,
-        height: layer.shareHeight * dimensions.height,
-      };
-    }
-    return defaultShareLayerBounds(layer);
+    return mapDocumentBounds(layer, shareContentTransform());
   }
 
   function applyShareBoundsToLayer(layer, bounds) {
-    const dimensions = getOutputDimensions();
-    layer.shareCustomized = true;
-    layer.shareX = bounds.x / dimensions.width;
-    layer.shareY = bounds.y / dimensions.height;
-    layer.shareWidth = bounds.width / dimensions.width;
-    layer.shareHeight = bounds.height / dimensions.height;
-  }
-
-  function materializeShareLayerBounds() {
-    if (!frameEnabled) return;
-    const entries = imageLayers.map((layer) => ({ layer, bounds: imageLayerBounds(layer) }));
-    entries.forEach(({ layer, bounds }) => applyShareBoundsToLayer(layer, bounds));
-  }
-
-  function captureShareLayerBounds() {
-    if (!frameEnabled || !imageLoaded) return null;
-    return imageLayers.map((layer) => ({ layer, bounds: imageLayerBounds(layer) }));
-  }
-
-  function fitShareLayerEntriesToPadding(entries) {
-    if (!entries?.length) return;
-    const visibleBounds = boundsUnion(entries
-      .filter(({ layer }) => layer.visible !== false)
-      .map(({ bounds }) => bounds));
-    if (!visibleBounds) return;
-    const target = shareFitTransform(visibleBounds);
-    entries.forEach(({ layer, bounds }) => {
-      applyShareBoundsToLayer(layer, {
-        x: target.x + (bounds.x - visibleBounds.x) * target.scale,
-        y: target.y + (bounds.y - visibleBounds.y) * target.scale,
-        width: bounds.width * target.scale,
-        height: bounds.height * target.scale,
-      });
-    });
-    const selectedLayer = activeImageLayer();
-    if (selectedLayer) selection = imageLayerBounds(selectedLayer);
-  }
-
-  function fitVisibleLayersToSharePadding() {
-    fitShareLayerEntriesToPadding(captureShareLayerBounds());
+    Object.assign(layer, unmapShareBounds(bounds, shareContentTransform()));
+    delete layer.shareCustomized;
+    delete layer.shareX;
+    delete layer.shareY;
+    delete layer.shareWidth;
+    delete layer.shareHeight;
   }
 
   function documentPointFromShare(point) {
@@ -794,9 +718,14 @@
 
     const presetButton = elements.ratioButtons.find((button) => button.dataset.aspect === aspectPreset);
     if (matchImageRatio) {
-      elements.customSizeNote.textContent = imageLoaded
-        ? `Matches ${baseCanvas.width} × ${baseCanvas.height} source ratio · pixels`
-        : "Waiting for an image · pixels";
+      if (imageLoaded) {
+        const layout = getShareLayout();
+        elements.customSizeNote.textContent = layout.constrained
+          ? `Canvas limit reached · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`
+          : `Keeps the edit surface crisp · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`;
+      } else {
+        elements.customSizeNote.textContent = "Waiting for an image · pixels";
+      }
     } else {
       elements.customSizeNote.textContent = presetButton
         ? `${presetButton.querySelector("strong").textContent} preset · pixels`
@@ -806,7 +735,6 @@
   }
 
   function setAspectPreset(button) {
-    const previousLayerBounds = captureShareLayerBounds();
     matchImageRatio = false;
     aspectPreset = button.dataset.aspect;
     elements.matchImageRatio.checked = false;
@@ -816,9 +744,7 @@
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
     savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-    fitShareLayerEntriesToPadding(previousLayerBounds);
     scheduleCurrentImageSave();
-    outputResizeLayerEntries = null;
     updatePresentationUI();
   }
 
@@ -853,14 +779,12 @@
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
     savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-    fitShareLayerEntriesToPadding(outputResizeLayerEntries);
     scheduleCurrentImageSave();
     updatePresentationUI();
   }
 
   function normalizeDimensionInputs() {
-    const previousLayerBounds = captureShareLayerBounds();
-    let dimensions = getOutputDimensions();
+    let dimensions = getRequestedOutputDimensions();
     if (matchImageRatio && imageLoaded) {
       const sourceRatio = baseCanvas.width / baseCanvas.height;
       dimensions = {
@@ -877,7 +801,6 @@
     elements.outputHeight.value = String(dimensions.height);
     savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
     savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-    fitShareLayerEntriesToPadding(outputResizeLayerEntries || previousLayerBounds);
     scheduleCurrentImageSave();
     updatePresentationUI();
   }
@@ -889,7 +812,6 @@
   }
 
   function setMatchImageRatio(enabled) {
-    const previousLayerBounds = captureShareLayerBounds();
     matchImageRatio = enabled;
     savePreference(STORAGE_KEYS.matchImageRatio, String(matchImageRatio));
     if (matchImageRatio) {
@@ -899,11 +821,7 @@
       aspectPreset = "custom";
       savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     }
-    if (matchImageRatio) {
-      fitShareLayerEntriesToPadding(previousLayerBounds);
-      scheduleCurrentImageSave();
-    }
-    outputResizeLayerEntries = null;
+    scheduleCurrentImageSave();
     updatePresentationUI();
   }
 
@@ -1473,7 +1391,6 @@
     viewZoom = 1;
     viewPanX = 0;
     viewPanY = 0;
-    layerSurfaceCache.clear();
 
     canvas.width = 1;
     canvas.height = 1;
@@ -1595,7 +1512,6 @@
     imageLayers.push(layer);
     activeImageLayerId = layer.id;
     activeObjectId = null;
-    if (frameEnabled) fitVisibleLayersToSharePadding();
     selection = imageLayerBounds(layer);
     rebuildBaseCanvas();
     renderLayers();
@@ -1694,7 +1610,6 @@
     if (activeImageLayerId === layerId) {
       activeImageLayerId = imageLayers.at(-1)?.id || null;
     }
-    if (frameEnabled) fitVisibleLayersToSharePadding();
     const layer = activeImageLayer();
     selection = layer ? imageLayerBounds(layer) : null;
     rebuildBaseCanvas();
@@ -1910,7 +1825,6 @@
   }
 
   function beginImageLayerInteraction(layer, point, handle = null) {
-    if (frameEnabled) materializeShareLayerBounds();
     imageLayerInteraction = {
       layerId: layer.id,
       kind: handle ? "resize" : "move",
@@ -1979,7 +1893,7 @@
     else Object.assign(nextLayer, updated);
     imageLayers[index] = nextLayer;
     selection = { x: updated.x, y: updated.y, width: updated.width, height: updated.height };
-    if (!frameEnabled) rebuildSourceCanvas();
+    rebuildBaseCanvas();
     updateControls();
     render();
   }
@@ -2775,39 +2689,28 @@
     targetContext.restore();
   }
 
-  function layerSurface(layer, bounds, radius) {
-    const width = Math.max(1, Math.ceil(bounds.width));
-    const height = Math.max(1, Math.ceil(bounds.height));
-    const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
-    const key = `${layer.id}:${width}:${height}:${Math.round(safeRadius * 10)}`;
-    if (layerSurfaceCache.has(key)) return layerSurfaceCache.get(key);
-    const layerPrefix = `${layer.id}:`;
-    [...layerSurfaceCache.keys()]
-      .filter((cachedKey) => cachedKey.startsWith(layerPrefix))
-      .forEach((cachedKey) => layerSurfaceCache.delete(cachedKey));
-    if (layerSurfaceCache.size > 12) layerSurfaceCache.clear();
-    const surface = document.createElement("canvas");
-    surface.width = width;
-    surface.height = height;
-    const surfaceContext = surface.getContext("2d");
-    surfaceContext.imageSmoothingEnabled = true;
-    surfaceContext.imageSmoothingQuality = "high";
-    surfaceContext.save();
-    roundedRectanglePath(surfaceContext, 0, 0, width, height, safeRadius);
-    surfaceContext.clip();
-    surfaceContext.drawImage(layer.image, 0, 0, width, height);
-    surfaceContext.restore();
-    layerSurfaceCache.set(key, surface);
-    return surface;
+  function prepareShareContentSurface(bounds) {
+    const width = Math.max(1, Math.round(bounds.width));
+    const height = Math.max(1, Math.round(bounds.height));
+    if (shareContentSurface.width !== width) shareContentSurface.width = width;
+    if (shareContentSurface.height !== height) shareContentSurface.height = height;
+    shareContentSurfaceContext.setTransform(1, 0, 0, 1, 0, 0);
+    shareContentSurfaceContext.clearRect(0, 0, width, height);
+    shareContentSurfaceContext.imageSmoothingEnabled = true;
+    shareContentSurfaceContext.imageSmoothingQuality = "high";
+    const radiusScale = width / Math.max(1, bounds.width);
+    const radius = Number(elements.cornerRadius.value) * radiusScale;
+    shareContentSurfaceContext.save();
+    roundedRectanglePath(shareContentSurfaceContext, 0, 0, width, height, radius);
+    shareContentSurfaceContext.clip();
+    shareContentSurfaceContext.drawImage(baseCanvas, 0, 0, width, height);
+    shareContentSurfaceContext.restore();
+    return shareContentSurface;
   }
 
-  function drawShareImageLayer(targetContext, layer, { shadow = true } = {}) {
-    if (layer.visible === false) return;
-    const bounds = imageLayerBounds(layer);
-    const radius = Number(elements.cornerRadius.value);
-    const surface = layerSurface(layer, bounds, radius);
+  function drawShareEditableCanvas(targetContext, bounds, surface) {
     targetContext.save();
-    if (shadow && Number(elements.framePadding.value) > 0) {
+    if (Number(elements.framePadding.value) > 0) {
       const shadowUnit = Math.min(targetContext.canvas.width, targetContext.canvas.height);
       targetContext.shadowColor = "rgba(15, 23, 42, 0.3)";
       targetContext.shadowBlur = shadowUnit * 0.028;
@@ -2817,47 +2720,18 @@
     targetContext.restore();
   }
 
-  function drawCombinedShareReflection(targetContext) {
+  function drawCombinedShareReflection(targetContext, bounds, surface, reflection) {
     if (!reflectionEnabled) return;
-    const rawBounds = boundsUnion(imageLayers
-      .filter((layer) => layer.visible !== false)
-      .map((layer) => imageLayerBounds(layer)));
-    if (!rawBounds) return;
-    const left = Math.max(0, rawBounds.x);
-    const top = Math.max(0, rawBounds.y);
-    const right = Math.min(targetContext.canvas.width, rawBounds.x + rawBounds.width);
-    const bottom = Math.min(targetContext.canvas.height, rawBounds.y + rawBounds.height);
-    const visibleBounds = { x: left, y: top, width: right - left, height: bottom - top };
-    if (visibleBounds.width < 2 || visibleBounds.height < 5) return;
-
-    if (shareReflectionSource.width !== targetContext.canvas.width) shareReflectionSource.width = targetContext.canvas.width;
-    if (shareReflectionSource.height !== targetContext.canvas.height) shareReflectionSource.height = targetContext.canvas.height;
-    shareReflectionSourceContext.setTransform(1, 0, 0, 1, 0, 0);
-    shareReflectionSourceContext.globalCompositeOperation = "source-over";
-    shareReflectionSourceContext.clearRect(0, 0, shareReflectionSource.width, shareReflectionSource.height);
-    imageLayers.forEach((layer) => drawShareImageLayer(shareReflectionSourceContext, layer, { shadow: false }));
-    placedObjects.forEach((object) => drawSharePlacedObject(shareReflectionSourceContext, object));
-
-    const reflectionHeight = Math.max(1, Math.ceil(visibleBounds.height * 0.22));
-    const reflectionWidth = Math.max(1, Math.ceil(visibleBounds.width));
+    const reflectionHeight = Math.max(1, Math.ceil(surface.height * 0.22));
+    const reflectionWidth = surface.width;
     if (shareReflectionCanvas.width !== reflectionWidth) shareReflectionCanvas.width = reflectionWidth;
     if (shareReflectionCanvas.height !== reflectionHeight) shareReflectionCanvas.height = reflectionHeight;
     shareReflectionContext.setTransform(1, 0, 0, 1, 0, 0);
     shareReflectionContext.globalCompositeOperation = "source-over";
     shareReflectionContext.clearRect(0, 0, shareReflectionCanvas.width, shareReflectionCanvas.height);
-    shareReflectionContext.translate(0, visibleBounds.height);
+    shareReflectionContext.translate(0, surface.height);
     shareReflectionContext.scale(1, -1);
-    shareReflectionContext.drawImage(
-      shareReflectionSource,
-      visibleBounds.x,
-      visibleBounds.y,
-      visibleBounds.width,
-      visibleBounds.height,
-      0,
-      0,
-      reflectionWidth,
-      visibleBounds.height,
-    );
+    shareReflectionContext.drawImage(surface, 0, 0);
     shareReflectionContext.setTransform(1, 0, 0, 1, 0, 0);
     shareReflectionContext.globalCompositeOperation = "destination-in";
     const fade = shareReflectionContext.createLinearGradient(0, 0, 0, reflectionHeight);
@@ -2866,13 +2740,12 @@
     fade.addColorStop(1, "rgba(255, 255, 255, 0)");
     shareReflectionContext.fillStyle = fade;
     shareReflectionContext.fillRect(0, 0, shareReflectionCanvas.width, shareReflectionCanvas.height);
-    const gap = Math.max(3, visibleBounds.height * 0.018);
     targetContext.drawImage(
       shareReflectionCanvas,
-      visibleBounds.x,
-      visibleBounds.y + visibleBounds.height + gap,
-      visibleBounds.width,
-      reflectionHeight,
+      bounds.x,
+      bounds.y + bounds.height + reflection.gap,
+      bounds.width,
+      reflection.height,
     );
   }
 
@@ -2886,19 +2759,6 @@
       height: object.height * transform.scale,
       blurStrength: Math.max(2, object.blurStrength * transform.scale),
     };
-  }
-
-  function drawSharePlacedObject(targetContext, object) {
-    const transform = shareContentTransform();
-    if (object.mode === "blur") {
-      drawBlurRegion(targetContext, shareBlurObject(object));
-      return;
-    }
-    targetContext.save();
-    targetContext.translate(transform.x, transform.y);
-    targetContext.scale(transform.scale, transform.scale);
-    drawPlacedObject(targetContext, object);
-    targetContext.restore();
   }
 
   function drawShareEditorOverlay(targetContext) {
@@ -2931,9 +2791,10 @@
     targetContext.imageSmoothingEnabled = true;
     targetContext.imageSmoothingQuality = "high";
     if (!frameBackgroundIsTransparent()) fillGradient(targetContext, targetContext.canvas.width, targetContext.canvas.height);
-    drawCombinedShareReflection(targetContext);
-    imageLayers.forEach((layer) => drawShareImageLayer(targetContext, layer));
-    placedObjects.forEach((object) => drawSharePlacedObject(targetContext, object));
+    const layout = getShareLayout();
+    const surface = prepareShareContentSurface(layout.content);
+    drawCombinedShareReflection(targetContext, layout.content, surface, layout.reflection);
+    drawShareEditableCanvas(targetContext, layout.content, surface);
     if (includeEditorOverlay) drawShareEditorOverlay(targetContext);
   }
 
@@ -3734,8 +3595,8 @@
       else {
         selectedLayer.x = bounds.x;
         selectedLayer.y = bounds.y;
-        rebuildBaseCanvas();
       }
+      rebuildBaseCanvas();
       selection = bounds;
       renderLayers();
       updateControls();
@@ -3880,7 +3741,6 @@
   elements.reflectionEnabled.addEventListener("change", () => {
     reflectionEnabled = elements.reflectionEnabled.checked;
     savePreference(STORAGE_KEYS.reflectionEnabled, String(reflectionEnabled));
-    fitVisibleLayersToSharePadding();
     scheduleCurrentImageSave();
     updatePresentationUI();
     showToast(reflectionEnabled ? "Reflection added to share canvas." : "Reflection removed.");
@@ -3895,14 +3755,8 @@
     button.addEventListener("click", () => setGradient(button.dataset.gradient));
   });
   [elements.outputWidth, elements.outputHeight].forEach((input) => {
-    input.addEventListener("focus", () => {
-      outputResizeLayerEntries = captureShareLayerBounds();
-    });
     input.addEventListener("input", () => setCustomDimensions(input));
-    input.addEventListener("blur", () => {
-      normalizeDimensionInputs();
-      outputResizeLayerEntries = null;
-    });
+    input.addEventListener("blur", normalizeDimensionInputs);
     input.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
@@ -3912,7 +3766,6 @@
   });
   elements.framePadding.addEventListener("input", () => {
     savePreference(STORAGE_KEYS.framePadding, elements.framePadding.value);
-    fitVisibleLayersToSharePadding();
     scheduleCurrentImageSave();
     updatePresentationUI();
   });

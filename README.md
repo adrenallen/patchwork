@@ -11,7 +11,7 @@ Patchwork is a fast, local image redaction and screenshot-markup tool. Paste, dr
 - Paste, drag/drop, or upload one or multiple PNG, JPG, WebP, and GIF images
 - One-click New canvas action that saves the current document to Recent Images before resetting the workspace
 - Selectable image layers that can be moved, resized, reordered, and removed
-- Free image-layer placement across the full Share canvas, including its padding area, with transparent space around moved or resized images
+- A separate Share canvas background that keeps image layers and edits together on the original editable surface
 - Solid, diagonal, and crosshatch fills
 - Editable Gaussian and pixelized blur masks with adjustable strength
 - Replacement text with custom background, text color, font size, style, and remembered Sans, Serif, Mono, or handwritten font choices
@@ -25,8 +25,8 @@ Patchwork is a fast, local image redaction and screenshot-markup tool. Paste, dr
 - Ten recent tool presets, with reused settings promoted to the top
 - Optional gradient or transparent presentation canvas with six curated backgrounds and one export-ready reflection of the combined visible image layout
 - Square, portrait, landscape, and story presets plus custom pixel dimensions
-- Source-size output and optional image-ratio locking for edge-to-edge framing
-- Bounding-box-aware presentation padding, rounded image corners, and zero-padding transparent corners
+- Source-resolution output that expands for presentation padding instead of downscaling the edited image
+- Fixed-size social presets, rounded editable-canvas corners, and zero-padding transparent corners
 - Undo, redo, keyboard controls, clipboard copy, and PNG export
 - Preferences, recent presets, layered documents, and editable image history saved locally in the browser
 - No uploads or server-side image processing

@@ -235,7 +235,7 @@
               </fieldset>
 
               <fieldset class="control-group">
-                <legend>Output size</legend>
+                <legend>Editable canvas size</legend>
                 <div class="dimension-fields">
                   <label for="outputWidth"><span>Width</span><input id="outputWidth" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
                   <span aria-hidden="true">×</span>
@@ -243,7 +243,7 @@
                 </div>
                 <label class="match-ratio-control" for="matchImageRatio">
                   <input id="matchImageRatio" type="checkbox" checked />
-                  <span><strong>Match image ratio</strong><small>Starts at source size; 0% padding fills the canvas.</small></span>
+                  <span><strong>Match image ratio</strong><small>Keeps source pixels crisp; Share canvas grows around the edit.</small></span>
                 </label>
                 <p class="custom-size-note" id="customSizeNote">Waiting for an image · pixels</p>
               </fieldset>
@@ -358,6 +358,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260828.1"></script>
+    <script src="share-layout.js?v=20260830.1"></script>
+    <script src="app.js?v=20260830.1"></script>
   </body>
 </html>

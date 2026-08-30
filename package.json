@@ -1,0 +1,7 @@
+{
+  "name": "patchwork",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
