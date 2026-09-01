@@ -1349,8 +1349,97 @@ input[type="range"] {
   margin: -2px 0 0;
 }
 
+.padding-control-group {
+  display: grid;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.padding-control-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.padding-title {
+  color: #3d4960;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.padding-unit-control {
+  grid-template-columns: repeat(2, 36px);
+  margin: 0;
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.padding-unit-button {
+  min-height: 25px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font: 9px var(--utility);
+}
+
+.padding-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.padding-fields > label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.measurement-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 29px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.measurement-input input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 4px 0 9px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 11px var(--utility);
+  font-variant-numeric: tabular-nums;
+}
+
+.measurement-input:focus-within {
+  border-color: var(--blue);
+  outline: 2px solid rgba(47, 111, 237, 0.14);
+  outline-offset: 0;
+}
+
+.measurement-input input:focus {
+  outline: 0;
+}
+
+.padding-unit-suffix {
+  display: grid;
+  place-items: center;
+  border-left: 1px solid #e3e8ef;
+  background: #f8fafc;
+  color: var(--muted);
+  font: 9px var(--utility);
+  pointer-events: none;
+}
+
 .transparency-note {
-  margin: -7px 0 2px;
+  margin: 0 0 2px;
   color: var(--muted);
   font: 8px/1.4 var(--utility);
 }

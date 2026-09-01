@@ -11,6 +11,11 @@
     return Number.isFinite(number) && number > 0 ? number : fallback;
   }
 
+  function nonNegativeNumber(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : fallback;
+  }
+
   function constrainDimensions(width, height, maxDimension, maxPixels) {
     let safeWidth = Math.max(1, Math.ceil(width));
     let safeHeight = Math.max(1, Math.ceil(height));
@@ -37,6 +42,9 @@
     contentWidth,
     contentHeight,
     paddingPercent = 0,
+    paddingX,
+    paddingY,
+    paddingUnit = "percent",
     reflection = false,
     fixImageBlur = false,
     maxDimension = DEFAULT_MAX_DIMENSION,
@@ -50,8 +58,13 @@
       width: positiveNumber(contentWidth),
       height: positiveNumber(contentHeight),
     };
-    const paddingRatio = Math.max(0, Math.min(0.49, Number(paddingPercent) / 100 || 0));
-    const availableRatio = Math.max(0.02, 1 - paddingRatio * 2);
+    const resolvedPaddingX = nonNegativeNumber(paddingX, nonNegativeNumber(paddingPercent));
+    const resolvedPaddingY = nonNegativeNumber(paddingY, nonNegativeNumber(paddingPercent));
+    const usesPixels = paddingUnit === "pixels";
+    const paddingRatioX = usesPixels ? 0 : Math.min(0.49, resolvedPaddingX / 100);
+    const paddingRatioY = usesPixels ? 0 : Math.min(0.49, resolvedPaddingY / 100);
+    const availableRatioX = Math.max(0.02, 1 - paddingRatioX * 2);
+    const availableRatioY = Math.max(0.02, 1 - paddingRatioY * 2);
     const desiredScale = fixImageBlur
       ? 1
       : Math.min(requested.width / content.width, requested.height / content.height);
@@ -63,8 +76,12 @@
     let outputWidth = requested.width;
     let outputHeight = requested.height;
     if (fixImageBlur) {
-      const requiredWidth = desiredWidth / availableRatio;
-      const requiredHeight = (desiredHeight + desiredReflectionHeight + desiredReflectionGap) / availableRatio;
+      const requiredWidth = usesPixels
+        ? desiredWidth + resolvedPaddingX * 2
+        : desiredWidth / availableRatioX;
+      const requiredHeight = usesPixels
+        ? desiredHeight + desiredReflectionHeight + desiredReflectionGap + resolvedPaddingY * 2
+        : (desiredHeight + desiredReflectionHeight + desiredReflectionGap) / availableRatioY;
       const expansion = Math.max(1, requiredWidth / requested.width, requiredHeight / requested.height);
       outputWidth *= expansion;
       outputHeight *= expansion;
@@ -76,8 +93,14 @@
       positiveNumber(maxDimension, DEFAULT_MAX_DIMENSION),
       positiveNumber(maxPixels, DEFAULT_MAX_PIXELS),
     );
-    const availableWidth = Math.max(1, dimensions.width * availableRatio);
-    const availableHeight = Math.max(1, dimensions.height * availableRatio);
+    const availableWidth = Math.max(
+      1,
+      usesPixels ? dimensions.width - resolvedPaddingX * 2 : dimensions.width * availableRatioX,
+    );
+    const availableHeight = Math.max(
+      1,
+      usesPixels ? dimensions.height - resolvedPaddingY * 2 : dimensions.height * availableRatioY,
+    );
     const reflectionSpace = reflection ? 1.24 : 1;
     const fittedScale = Math.min(
       availableWidth / content.width,
@@ -95,6 +118,11 @@
     return {
       dimensions: { width: dimensions.width, height: dimensions.height },
       constrained: dimensions.constrained,
+      padding: {
+        unit: usesPixels ? "pixels" : "percent",
+        x: resolvedPaddingX,
+        y: resolvedPaddingY,
+      },
       content: {
         x: snapToPixels ? Math.round(rawX) : rawX,
         y: snapToPixels ? Math.round(rawY) : rawY,

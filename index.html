@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260830.5" />
+    <link rel="stylesheet" href="styles.css?v=20260901.1" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -369,11 +369,26 @@
                 </div>
               </fieldset>
 
-              <label class="range-field presentation-range" for="framePadding">
-                <span class="range-heading"><span>Padding</span><output id="framePaddingValue" for="framePadding">10%</output></span>
-                <input id="framePadding" type="range" min="0" max="24" step="1" value="10" />
-              </label>
-              <p class="transparency-note">At 0%, rounded corners export transparent.</p>
+              <div class="control-group padding-control-group" role="group" aria-labelledby="paddingLabel">
+                <div class="padding-control-heading">
+                  <span class="padding-title" id="paddingLabel">Padding</span>
+                  <div class="segmented-control padding-unit-control" role="group" aria-label="Padding unit">
+                    <button class="segment padding-unit-button is-active" type="button" data-padding-unit="percent" aria-pressed="true">%</button>
+                    <button class="segment padding-unit-button" type="button" data-padding-unit="pixels" aria-pressed="false">px</button>
+                  </div>
+                </div>
+                <div class="padding-fields">
+                  <label for="framePaddingX">
+                    <span>Horizontal (X)</span>
+                    <span class="measurement-input"><input id="framePaddingX" type="number" min="0" max="49" step="0.1" value="10" inputmode="decimal" aria-describedby="paddingNote" /><span class="padding-unit-suffix" aria-hidden="true">%</span></span>
+                  </label>
+                  <label for="framePaddingY">
+                    <span>Vertical (Y)</span>
+                    <span class="measurement-input"><input id="framePaddingY" type="number" min="0" max="49" step="0.1" value="10" inputmode="decimal" aria-describedby="paddingNote" /><span class="padding-unit-suffix" aria-hidden="true">%</span></span>
+                  </label>
+                </div>
+                <p class="transparency-note" id="paddingNote">Per side of the canvas. Set both to 0 for transparent rounded corners.</p>
+              </div>
 
               <label class="range-field presentation-range" for="cornerRadius">
                 <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
@@ -467,7 +482,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
-    <script src="share-layout.js?v=20260830.2"></script>
-    <script src="app.js?v=20260830.6"></script>
+    <script src="share-layout.js?v=20260901.1"></script>
+    <script src="app.js?v=20260901.1"></script>
   </body>
 </html>

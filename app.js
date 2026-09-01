@@ -126,8 +126,11 @@
     fixImageBlur: document.querySelector("#fixImageBlur"),
     customSizeNote: document.querySelector("#customSizeNote"),
     gradientButtons: [...document.querySelectorAll(".gradient-button")],
-    framePadding: document.querySelector("#framePadding"),
-    framePaddingValue: document.querySelector("#framePaddingValue"),
+    paddingUnitButtons: [...document.querySelectorAll(".padding-unit-button")],
+    framePaddingX: document.querySelector("#framePaddingX"),
+    framePaddingY: document.querySelector("#framePaddingY"),
+    paddingUnitSuffixes: [...document.querySelectorAll(".padding-unit-suffix")],
+    paddingNote: document.querySelector("#paddingNote"),
     cornerRadius: document.querySelector("#cornerRadius"),
     cornerRadiusValue: document.querySelector("#cornerRadiusValue"),
     reflectionEnabled: document.querySelector("#reflectionEnabled"),
@@ -159,6 +162,9 @@
     fixImageBlur: "patchwork.fixImageBlur",
     gradient: "patchwork.gradient",
     framePadding: "patchwork.framePadding",
+    framePaddingX: "patchwork.framePaddingX",
+    framePaddingY: "patchwork.framePaddingY",
+    framePaddingUnit: "patchwork.framePaddingUnit",
     cornerRadius: "patchwork.cornerRadius",
     reflectionEnabled: "patchwork.reflectionEnabled",
     toolSettings: "patchwork.toolSettings",
@@ -226,6 +232,7 @@
   let aspectPreset = "square";
   let fixImageBlur = true;
   let gradientName = "dusk";
+  let paddingUnit = "percent";
   let reflectionEnabled = false;
   let blurStyle = "gaussian";
   let blurStrength = 14;
@@ -594,7 +601,25 @@
       savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
       savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
     }
-    elements.framePadding.value = String(clampNumber(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 24, 10));
+    const legacyFramePadding = clampDecimal(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 49, 10, 1);
+    const savedPaddingUnit = readPreference(STORAGE_KEYS.framePaddingUnit, "percent");
+    paddingUnit = ["percent", "pixels"].includes(savedPaddingUnit) ? savedPaddingUnit : "percent";
+    const paddingMaximum = paddingUnit === "pixels" ? 6000 : 49;
+    const paddingPrecision = paddingUnit === "pixels" ? 0 : 1;
+    elements.framePaddingX.value = String(clampDecimal(
+      readPreference(STORAGE_KEYS.framePaddingX, String(legacyFramePadding)),
+      0,
+      paddingMaximum,
+      legacyFramePadding,
+      paddingPrecision,
+    ));
+    elements.framePaddingY.value = String(clampDecimal(
+      readPreference(STORAGE_KEYS.framePaddingY, String(legacyFramePadding)),
+      0,
+      paddingMaximum,
+      legacyFramePadding,
+      paddingPrecision,
+    ));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
     const savedSmartFont = readPreference(STORAGE_KEYS.smartTextFont, "auto");
     const savedSmartWeight = readPreference(STORAGE_KEYS.smartTextWeight, "auto");
@@ -624,6 +649,13 @@
   function clampNumber(value, minimum, maximum, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.round(number))) : fallback;
+  }
+
+  function clampDecimal(value, minimum, maximum, fallback, precision = 0) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    const scale = 10 ** precision;
+    return Math.round(Math.min(maximum, Math.max(minimum, number)) * scale) / scale;
   }
 
   function saveToolSettings() {
@@ -729,14 +761,36 @@
     return { width, height };
   }
 
+  function paddingInputSettings(unit = paddingUnit) {
+    return unit === "pixels"
+      ? { maximum: 6000, precision: 0, step: "1", suffix: "px" }
+      : { maximum: 49, precision: 1, step: "0.1", suffix: "%" };
+  }
+
+  function getPaddingValues(unit = paddingUnit) {
+    const settings = paddingInputSettings(unit);
+    return {
+      x: clampDecimal(elements.framePaddingX.value, 0, settings.maximum, 0, settings.precision),
+      y: clampDecimal(elements.framePaddingY.value, 0, settings.maximum, 0, settings.precision),
+    };
+  }
+
+  function hasSharePadding() {
+    const padding = getPaddingValues();
+    return padding.x > 0 || padding.y > 0;
+  }
+
   function getShareLayout() {
     const requested = getRequestedOutputDimensions();
+    const padding = getPaddingValues();
     return calculateShareLayout({
       requestedWidth: requested.width,
       requestedHeight: requested.height,
       contentWidth: documentWidth(),
       contentHeight: documentHeight(),
-      paddingPercent: Number(elements.framePadding.value),
+      paddingX: padding.x,
+      paddingY: padding.y,
+      paddingUnit,
       reflection: reflectionEnabled,
       fixImageBlur,
     });
@@ -786,8 +840,65 @@
     return `linear-gradient(${gradient.angle}deg, ${gradient.stops.join(", ")})`;
   }
 
+  function savePaddingPreferences() {
+    savePreference(STORAGE_KEYS.framePaddingUnit, paddingUnit);
+    savePreference(STORAGE_KEYS.framePaddingX, elements.framePaddingX.value);
+    savePreference(STORAGE_KEYS.framePaddingY, elements.framePaddingY.value);
+  }
+
+  function updatePaddingControlUI() {
+    const settings = paddingInputSettings();
+    elements.paddingUnitButtons.forEach((button) => {
+      const active = button.dataset.paddingUnit === paddingUnit;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    [elements.framePaddingX, elements.framePaddingY].forEach((input) => {
+      input.max = String(settings.maximum);
+      input.step = settings.step;
+      input.inputMode = paddingUnit === "pixels" ? "numeric" : "decimal";
+    });
+    elements.paddingUnitSuffixes.forEach((suffix) => {
+      suffix.textContent = settings.suffix;
+    });
+    elements.paddingNote.textContent = paddingUnit === "pixels"
+      ? "Pixels per side of the exported canvas. Set both to 0 for transparent rounded corners."
+      : "Percent per side of the canvas. Set both to 0 for transparent rounded corners.";
+  }
+
+  function normalizePaddingInputs({ update = true } = {}) {
+    const padding = getPaddingValues();
+    elements.framePaddingX.value = String(padding.x);
+    elements.framePaddingY.value = String(padding.y);
+    savePaddingPreferences();
+    scheduleCurrentImageSave();
+    if (update) updatePresentationUI();
+  }
+
+  function setPaddingUnit(nextUnit) {
+    if (!["percent", "pixels"].includes(nextUnit) || nextUnit === paddingUnit) return;
+    const previousUnit = paddingUnit;
+    const previousPadding = getPaddingValues(previousUnit);
+    const dimensions = frameEnabled && imageLoaded ? getShareLayout().dimensions : getRequestedOutputDimensions();
+    paddingUnit = nextUnit;
+    const converted = nextUnit === "pixels"
+      ? {
+          x: Math.round(dimensions.width * previousPadding.x / 100),
+          y: Math.round(dimensions.height * previousPadding.y / 100),
+        }
+      : {
+          x: clampDecimal(previousPadding.x / dimensions.width * 100, 0, 49, 0, 1),
+          y: clampDecimal(previousPadding.y / dimensions.height * 100, 0, 49, 0, 1),
+        };
+    elements.framePaddingX.value = String(converted.x);
+    elements.framePaddingY.value = String(converted.y);
+    updatePaddingControlUI();
+    normalizePaddingInputs();
+    showToast(`Padding now uses ${nextUnit === "pixels" ? "pixels" : "percent"}.`);
+  }
+
   function frameBackgroundIsTransparent() {
-    return gradientName === "transparent" || Number(elements.framePadding.value) === 0;
+    return gradientName === "transparent" || !hasSharePadding();
   }
 
   function updatePresentationUI() {
@@ -796,7 +907,7 @@
     elements.fixImageBlur.checked = fixImageBlur;
     elements.frameToggleLabel.textContent = frameEnabled ? "On" : "Off";
     elements.presentationControls.hidden = !frameEnabled;
-    elements.framePaddingValue.value = `${elements.framePadding.value}%`;
+    updatePaddingControlUI();
     elements.cornerRadiusValue.value = `${elements.cornerRadius.value} px`;
 
     elements.ratioButtons.forEach((button) => {
@@ -1855,7 +1966,7 @@
     const previewWidth = Math.max(80, dimensions.width * previewScale);
     const previewHeight = Math.max(80, dimensions.height * previewScale);
     const transparentBackground = frameBackgroundIsTransparent();
-    const zeroPadding = Number(elements.framePadding.value) === 0;
+    const zeroPadding = !hasSharePadding();
 
     elements.framePreview.style.width = `${previewWidth}px`;
     elements.framePreview.style.height = `${previewHeight}px`;
@@ -3449,7 +3560,7 @@
 
   function drawShareEditableCanvas(targetContext, bounds, surface) {
     targetContext.save();
-    if (Number(elements.framePadding.value) > 0) {
+    if (hasSharePadding()) {
       const shadowUnit = Math.min(targetContext.canvas.width, targetContext.canvas.height);
       targetContext.shadowColor = "rgba(15, 23, 42, 0.3)";
       targetContext.shadowBlur = shadowUnit * 0.028;
@@ -4624,10 +4735,23 @@
       input.blur();
     });
   });
-  elements.framePadding.addEventListener("input", () => {
-    savePreference(STORAGE_KEYS.framePadding, elements.framePadding.value);
-    scheduleCurrentImageSave();
-    updatePresentationUI();
+  elements.paddingUnitButtons.forEach((button) => {
+    button.addEventListener("click", () => setPaddingUnit(button.dataset.paddingUnit));
+  });
+  [elements.framePaddingX, elements.framePaddingY].forEach((input) => {
+    input.addEventListener("input", () => {
+      if (!Number.isFinite(Number(input.value))) return;
+      savePaddingPreferences();
+      scheduleCurrentImageSave();
+      updatePresentationUI();
+    });
+    input.addEventListener("blur", () => normalizePaddingInputs());
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      event.stopPropagation();
+      input.blur();
+    });
   });
   elements.cornerRadius.addEventListener("input", () => {
     savePreference(STORAGE_KEYS.cornerRadius, elements.cornerRadius.value);

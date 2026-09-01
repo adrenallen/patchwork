@@ -121,6 +121,40 @@ test("fixed presets retain their requested output dimensions", () => {
   assert.equal(layout.content.scale, 1280 / 2400);
 });
 
+test("horizontal and vertical percentage padding are applied independently", () => {
+  const layout = calculateShareLayout({
+    requestedWidth: 1000,
+    requestedHeight: 1000,
+    contentWidth: 800,
+    contentHeight: 600,
+    paddingX: 10,
+    paddingY: 20,
+    paddingUnit: "percent",
+    fixImageBlur: false,
+  });
+
+  assert.deepEqual(layout.dimensions, { width: 1000, height: 1000 });
+  assert.deepEqual(layout.padding, { unit: "percent", x: 10, y: 20 });
+  assert.deepEqual(layout.content, { x: 100, y: 200, width: 800, height: 600, scale: 1 });
+});
+
+test("pixel padding creates exact per-side room when source pixels are preserved", () => {
+  const layout = calculateShareLayout({
+    requestedWidth: 1000,
+    requestedHeight: 800,
+    contentWidth: 970,
+    contentHeight: 730,
+    paddingX: 15,
+    paddingY: 35,
+    paddingUnit: "pixels",
+    fixImageBlur: true,
+  });
+
+  assert.deepEqual(layout.dimensions, { width: 1000, height: 800 });
+  assert.deepEqual(layout.padding, { unit: "pixels", x: 15, y: 35 });
+  assert.deepEqual(layout.content, { x: 15, y: 35, width: 970, height: 730, scale: 1 });
+});
+
 test("document and share bounds use an invertible shared transform", () => {
   const transform = { x: 240, y: 135, scale: 1 };
   const redaction = { x: 410, y: 220, width: 300, height: 84 };
