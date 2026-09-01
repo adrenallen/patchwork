@@ -1137,6 +1137,59 @@ input[type="range"] {
   font-weight: 600;
 }
 
+.canvas-layout-group {
+  display: grid;
+  gap: 9px;
+}
+
+.canvas-layout-group > legend {
+  margin-bottom: 0;
+}
+
+.layout-size-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 53px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--ink);
+  color: white;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.layout-size-strip > span:not(.layout-size-arrow) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.layout-size-strip small {
+  color: #aebbd0;
+  font: 8px var(--utility);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.layout-size-strip strong {
+  overflow: hidden;
+  font: 10px var(--utility);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout-size-arrow {
+  color: #78a3ff;
+  font-size: 15px;
+}
+
+.layout-field-label {
+  color: var(--muted);
+  font-size: 9px;
+}
+
 .ratio-presets {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1170,6 +1223,10 @@ input[type="range"] {
   box-shadow: 0 0 0 1px rgba(47, 111, 237, 0.1);
 }
 
+.ratio-image-button {
+  grid-column: 1 / -1;
+}
+
 .ratio-button strong,
 .ratio-button small {
   display: block;
@@ -1196,41 +1253,15 @@ input[type="range"] {
 }
 
 .ratio-square { width: 18px; height: 18px; }
+.ratio-image { width: 22px; height: 15px; border-style: dashed; }
 .ratio-portrait { width: 15px; height: 19px; }
 .ratio-landscape { width: 22px; height: 13px; }
 .ratio-story { width: 11px; height: 20px; }
 
-.dimension-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end;
-  gap: 8px;
-}
-
-.dimension-fields > span {
-  padding-bottom: 10px;
+.layout-status {
+  margin: 0;
   color: var(--muted);
-  font-size: 12px;
-}
-
-.dimension-fields label {
-  display: grid;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 9px;
-}
-
-.dimension-fields input {
-  width: 100%;
-  min-width: 0;
-  height: 36px;
-  padding: 0 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-  color: var(--ink);
-  font: 11px var(--utility);
-  font-variant-numeric: tabular-nums;
+  font: 8px/1.45 var(--utility);
 }
 
 .match-ratio-control {
@@ -1282,12 +1313,6 @@ input[type="range"] {
 
 .auto-text-size-control strong {
   font-size: 11px;
-}
-
-.custom-size-note {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font: 8px var(--utility);
 }
 
 .gradient-presets {
@@ -1352,7 +1377,9 @@ input[type="range"] {
 .padding-control-group {
   display: grid;
   gap: 8px;
-  margin-top: -2px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .padding-control-heading {
@@ -2144,9 +2171,6 @@ input[type="range"] {
     font-size: 16px;
   }
 
-  .dimension-fields input {
-    font-size: 16px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

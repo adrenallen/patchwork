@@ -121,10 +121,9 @@
     frameToggleLabel: document.querySelector("#frameToggleLabel"),
     presentationControls: document.querySelector("#presentationControls"),
     ratioButtons: [...document.querySelectorAll(".ratio-button")],
-    outputWidth: document.querySelector("#outputWidth"),
-    outputHeight: document.querySelector("#outputHeight"),
-    fixImageBlur: document.querySelector("#fixImageBlur"),
-    customSizeNote: document.querySelector("#customSizeNote"),
+    imageSizeReadout: document.querySelector("#imageSizeReadout"),
+    exportSizeReadout: document.querySelector("#exportSizeReadout"),
+    layoutStatus: document.querySelector("#layoutStatus"),
     gradientButtons: [...document.querySelectorAll(".gradient-button")],
     paddingUnitButtons: [...document.querySelectorAll(".padding-unit-button")],
     framePaddingX: document.querySelector("#framePaddingX"),
@@ -157,9 +156,6 @@
     recentPatches: "patchwork.recentPatches",
     frameEnabled: "patchwork.frameEnabled",
     aspectPreset: "patchwork.aspectPreset",
-    outputWidth: "patchwork.outputWidth",
-    outputHeight: "patchwork.outputHeight",
-    fixImageBlur: "patchwork.fixImageBlur",
     gradient: "patchwork.gradient",
     framePadding: "patchwork.framePadding",
     framePaddingX: "patchwork.framePaddingX",
@@ -185,6 +181,14 @@
     iris: { angle: 135, stops: ["#363795", "#8b5cf6", "#ec4899"] },
     mint: { angle: 135, stops: ["#b9fbc0", "#39c6b0", "#157a87"] },
     graphite: { angle: 135, stops: ["#64748b", "#26354b", "#0f172a"] },
+  };
+
+  const ASPECT_RATIOS = {
+    image: null,
+    square: 1,
+    portrait: 4 / 5,
+    landscape: 16 / 9,
+    story: 9 / 16,
   };
 
   const TEXT_FONTS = {
@@ -229,8 +233,7 @@
   let ocrWorkerPromise = null;
   let documentRevision = 0;
   let frameEnabled = false;
-  let aspectPreset = "square";
-  let fixImageBlur = true;
+  let aspectPreset = "image";
   let gradientName = "dusk";
   let paddingUnit = "percent";
   let reflectionEnabled = false;
@@ -585,27 +588,18 @@
     applyToolSettings("mask");
     frameEnabled = readPreference(STORAGE_KEYS.frameEnabled, "false") === "true";
     reflectionEnabled = readPreference(STORAGE_KEYS.reflectionEnabled, "false") === "true";
-    const savedAspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "square");
-    const migrateSourceRatio = savedAspectPreset === "source";
-    aspectPreset = migrateSourceRatio ? "square" : savedAspectPreset;
-    fixImageBlur = readPreference(STORAGE_KEYS.fixImageBlur, "true") === "true";
+    const savedAspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "image");
+    aspectPreset = Object.hasOwn(ASPECT_RATIOS, savedAspectPreset) ? savedAspectPreset : "image";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
     elements.frameEnabled.checked = frameEnabled;
     elements.reflectionEnabled.checked = reflectionEnabled;
-    elements.fixImageBlur.checked = fixImageBlur;
-    elements.outputWidth.value = String(clampNumber(migrateSourceRatio ? "1600" : readPreference(STORAGE_KEYS.outputWidth, "1600"), 1, 12000, 1600));
-    elements.outputHeight.value = String(clampNumber(migrateSourceRatio ? "1600" : readPreference(STORAGE_KEYS.outputHeight, "1600"), 1, 12000, 1600));
-    if (migrateSourceRatio) {
-      savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
-      savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
-      savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-    }
+    savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
     const legacyFramePadding = clampDecimal(readPreference(STORAGE_KEYS.framePadding, "10"), 0, 49, 10, 1);
     const savedPaddingUnit = readPreference(STORAGE_KEYS.framePaddingUnit, "percent");
     paddingUnit = ["percent", "pixels"].includes(savedPaddingUnit) ? savedPaddingUnit : "percent";
     const paddingMaximum = paddingUnit === "pixels" ? 6000 : 49;
-    const paddingPrecision = paddingUnit === "pixels" ? 0 : 1;
+    const paddingPrecision = paddingUnit === "pixels" ? 0 : 2;
     elements.framePaddingX.value = String(clampDecimal(
       readPreference(STORAGE_KEYS.framePaddingX, String(legacyFramePadding)),
       0,
@@ -749,22 +743,10 @@
     updatePreferenceLabels();
   }
 
-  function getRequestedOutputDimensions() {
-    let width = clampNumber(elements.outputWidth.value, 1, 12000, imageLoaded ? baseCanvas.width : 1600);
-    let height = clampNumber(elements.outputHeight.value, 1, 12000, imageLoaded ? baseCanvas.height : 1600);
-    const pixelLimit = 48_000_000;
-    if (width * height > pixelLimit) {
-      const scale = Math.sqrt(pixelLimit / (width * height));
-      width = Math.max(1, Math.floor(width * scale));
-      height = Math.max(1, Math.floor(height * scale));
-    }
-    return { width, height };
-  }
-
   function paddingInputSettings(unit = paddingUnit) {
     return unit === "pixels"
       ? { maximum: 6000, precision: 0, step: "1", suffix: "px" }
-      : { maximum: 49, precision: 1, step: "0.1", suffix: "%" };
+      : { maximum: 49, precision: 2, step: "0.01", suffix: "%" };
   }
 
   function getPaddingValues(unit = paddingUnit) {
@@ -775,29 +757,23 @@
     };
   }
 
-  function hasSharePadding() {
-    const padding = getPaddingValues();
-    return padding.x > 0 || padding.y > 0;
-  }
-
   function getShareLayout() {
-    const requested = getRequestedOutputDimensions();
     const padding = getPaddingValues();
     return calculateShareLayout({
-      requestedWidth: requested.width,
-      requestedHeight: requested.height,
       contentWidth: documentWidth(),
       contentHeight: documentHeight(),
       paddingX: padding.x,
       paddingY: padding.y,
       paddingUnit,
+      aspectRatio: ASPECT_RATIOS[aspectPreset],
       reflection: reflectionEnabled,
-      fixImageBlur,
     });
   }
 
   function getOutputDimensions() {
-    return frameEnabled ? getShareLayout().dimensions : getRequestedOutputDimensions();
+    return frameEnabled
+      ? getShareLayout().dimensions
+      : { width: documentWidth(), height: documentHeight() };
   }
 
   function documentWidth() {
@@ -862,8 +838,8 @@
       suffix.textContent = settings.suffix;
     });
     elements.paddingNote.textContent = paddingUnit === "pixels"
-      ? "Pixels per side of the exported canvas. Set both to 0 for transparent rounded corners."
-      : "Percent per side of the canvas. Set both to 0 for transparent rounded corners.";
+      ? "Minimum pixels per side. The selected shape may add more."
+      : "Percent of image size per side. The selected shape may add more.";
   }
 
   function normalizePaddingInputs({ update = true } = {}) {
@@ -879,7 +855,7 @@
     if (!["percent", "pixels"].includes(nextUnit) || nextUnit === paddingUnit) return;
     const previousUnit = paddingUnit;
     const previousPadding = getPaddingValues(previousUnit);
-    const dimensions = frameEnabled && imageLoaded ? getShareLayout().dimensions : getRequestedOutputDimensions();
+    const dimensions = { width: documentWidth(), height: documentHeight() };
     paddingUnit = nextUnit;
     const converted = nextUnit === "pixels"
       ? {
@@ -887,8 +863,8 @@
           y: Math.round(dimensions.height * previousPadding.y / 100),
         }
       : {
-          x: clampDecimal(previousPadding.x / dimensions.width * 100, 0, 49, 0, 1),
-          y: clampDecimal(previousPadding.y / dimensions.height * 100, 0, 49, 0, 1),
+          x: clampDecimal(previousPadding.x / dimensions.width * 100, 0, 49, 0, 2),
+          y: clampDecimal(previousPadding.y / dimensions.height * 100, 0, 49, 0, 2),
         };
     elements.framePaddingX.value = String(converted.x);
     elements.framePaddingY.value = String(converted.y);
@@ -897,14 +873,20 @@
     showToast(`Padding now uses ${nextUnit === "pixels" ? "pixels" : "percent"}.`);
   }
 
+  function shareHasBackgroundArea() {
+    const layout = getShareLayout();
+    const visibleHeight = layout.content.height + layout.reflection.height + layout.reflection.gap;
+    return layout.dimensions.width > layout.content.width + 0.5
+      || layout.dimensions.height > visibleHeight + 0.5;
+  }
+
   function frameBackgroundIsTransparent() {
-    return gradientName === "transparent" || !hasSharePadding();
+    return gradientName === "transparent" || !shareHasBackgroundArea();
   }
 
   function updatePresentationUI() {
     elements.frameEnabled.checked = frameEnabled;
     elements.reflectionEnabled.checked = reflectionEnabled;
-    elements.fixImageBlur.checked = fixImageBlur;
     elements.frameToggleLabel.textContent = frameEnabled ? "On" : "Off";
     elements.presentationControls.hidden = !frameEnabled;
     updatePaddingControlUI();
@@ -921,54 +903,30 @@
       button.setAttribute("aria-pressed", String(isActive));
     });
 
-    const presetButton = elements.ratioButtons.find((button) => button.dataset.aspect === aspectPreset);
-    if (fixImageBlur) {
-      if (imageLoaded) {
-        const layout = getShareLayout();
-        elements.customSizeNote.textContent = layout.constrained
-          ? `Canvas limit reached · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`
-          : `Original pixels preserved · exports ${layout.dimensions.width} × ${layout.dimensions.height} px`;
+    if (imageLoaded) {
+      const layout = getShareLayout();
+      elements.imageSizeReadout.textContent = `${documentWidth()} × ${documentHeight()}`;
+      elements.exportSizeReadout.textContent = `${layout.dimensions.width} × ${layout.dimensions.height}`;
+      if (layout.constrained) {
+        elements.layoutStatus.textContent = "Export reduced to stay within browser canvas limits.";
+      } else if (aspectPreset === "image") {
+        elements.layoutStatus.textContent = "Extra padding sets the canvas; the image stays at 1:1 pixels.";
       } else {
-        elements.customSizeNote.textContent = "Waiting for an image · pixels";
+        const presetButton = elements.ratioButtons.find((button) => button.dataset.aspect === aspectPreset);
+        const ratioLabel = presetButton?.querySelector("small")?.textContent || "the selected ratio";
+        elements.layoutStatus.textContent = `${ratioLabel} adds background as needed; the image stays at 1:1 pixels.`;
       }
     } else {
-      elements.customSizeNote.textContent = presetButton
-        ? `${presetButton.querySelector("strong").textContent} preset · pixels`
-        : "Custom size · pixels";
+      elements.imageSizeReadout.textContent = "Waiting";
+      elements.exportSizeReadout.textContent = "Waiting";
+      elements.layoutStatus.textContent = "Load an image to preview the export canvas.";
     }
     updateFramePreview();
   }
 
   function setAspectPreset(button) {
     aspectPreset = button.dataset.aspect;
-    elements.outputWidth.value = button.dataset.width;
-    elements.outputHeight.value = button.dataset.height;
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
-    savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
-    savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-    scheduleCurrentImageSave();
-    updatePresentationUI();
-  }
-
-  function setCustomDimensions() {
-    const width = Number(elements.outputWidth.value);
-    const height = Number(elements.outputHeight.value);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
-
-    aspectPreset = "custom";
-    savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
-    savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
-    savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
-    scheduleCurrentImageSave();
-    updatePresentationUI();
-  }
-
-  function normalizeDimensionInputs() {
-    const dimensions = getRequestedOutputDimensions();
-    elements.outputWidth.value = String(dimensions.width);
-    elements.outputHeight.value = String(dimensions.height);
-    savePreference(STORAGE_KEYS.outputWidth, elements.outputWidth.value);
-    savePreference(STORAGE_KEYS.outputHeight, elements.outputHeight.value);
     scheduleCurrentImageSave();
     updatePresentationUI();
   }
@@ -976,13 +934,6 @@
   function setGradient(name) {
     gradientName = (name === "transparent" || GRADIENTS[name]) ? name : "dusk";
     savePreference(STORAGE_KEYS.gradient, gradientName);
-    updatePresentationUI();
-  }
-
-  function setFixImageBlur(enabled) {
-    fixImageBlur = enabled;
-    savePreference(STORAGE_KEYS.fixImageBlur, String(fixImageBlur));
-    scheduleCurrentImageSave();
     updatePresentationUI();
   }
 
@@ -1966,7 +1917,7 @@
     const previewWidth = Math.max(80, dimensions.width * previewScale);
     const previewHeight = Math.max(80, dimensions.height * previewScale);
     const transparentBackground = frameBackgroundIsTransparent();
-    const zeroPadding = !hasSharePadding();
+    const zeroPadding = !shareHasBackgroundArea();
 
     elements.framePreview.style.width = `${previewWidth}px`;
     elements.framePreview.style.height = `${previewHeight}px`;
@@ -3560,7 +3511,7 @@
 
   function drawShareEditableCanvas(targetContext, bounds, surface) {
     targetContext.save();
-    if (hasSharePadding()) {
+    if (shareHasBackgroundArea()) {
       const shadowUnit = Math.min(targetContext.canvas.width, targetContext.canvas.height);
       targetContext.shadowColor = "rgba(15, 23, 42, 0.3)";
       targetContext.shadowBlur = shadowUnit * 0.028;
@@ -4719,21 +4670,8 @@
   elements.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setAspectPreset(button));
   });
-  elements.fixImageBlur.addEventListener("change", () => {
-    setFixImageBlur(elements.fixImageBlur.checked);
-  });
   elements.gradientButtons.forEach((button) => {
     button.addEventListener("click", () => setGradient(button.dataset.gradient));
-  });
-  [elements.outputWidth, elements.outputHeight].forEach((input) => {
-    input.addEventListener("input", () => setCustomDimensions(input));
-    input.addEventListener("blur", normalizeDimensionInputs);
-    input.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      event.stopPropagation();
-      input.blur();
-    });
   });
   elements.paddingUnitButtons.forEach((button) => {
     button.addEventListener("click", () => setPaddingUnit(button.dataset.paddingUnit));

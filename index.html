@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.1" />
+    <link rel="stylesheet" href="styles.css?v=20260901.2" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -317,43 +317,60 @@
                 <span class="switch-track" aria-hidden="true"><span></span></span>
               </label>
             </div>
-            <p class="presentation-intro">Frame the finished image for social posts.</p>
+            <p class="presentation-intro">Add background around the image for sharing.</p>
 
             <div class="presentation-controls" id="presentationControls" hidden>
-              <fieldset class="control-group">
-                <legend>Aspect preset</legend>
+              <fieldset class="control-group canvas-layout-group">
+                <legend>Canvas &amp; padding</legend>
+                <div class="layout-size-strip" aria-live="polite">
+                  <span><small>Image</small><strong id="imageSizeReadout">Waiting</strong></span>
+                  <span class="layout-size-arrow" aria-hidden="true">→</span>
+                  <span><small>Export</small><strong id="exportSizeReadout">Waiting</strong></span>
+                </div>
+                <span class="layout-field-label">Shape</span>
                 <div class="ratio-presets">
-                  <button class="ratio-button is-active" type="button" data-aspect="square" data-width="1600" data-height="1600" aria-pressed="true">
+                  <button class="ratio-button ratio-image-button is-active" type="button" data-aspect="image" aria-pressed="true">
+                    <span class="ratio-shape ratio-image" aria-hidden="true"></span>
+                    <span><strong>Image</strong><small>No fixed ratio</small></span>
+                  </button>
+                  <button class="ratio-button" type="button" data-aspect="square" aria-pressed="false">
                     <span class="ratio-shape ratio-square" aria-hidden="true"></span>
                     <span><strong>Square</strong><small>1:1</small></span>
                   </button>
-                  <button class="ratio-button" type="button" data-aspect="portrait" data-width="1080" data-height="1350" aria-pressed="false">
+                  <button class="ratio-button" type="button" data-aspect="portrait" aria-pressed="false">
                     <span class="ratio-shape ratio-portrait" aria-hidden="true"></span>
                     <span><strong>Portrait</strong><small>4:5</small></span>
                   </button>
-                  <button class="ratio-button" type="button" data-aspect="landscape" data-width="1600" data-height="900" aria-pressed="false">
+                  <button class="ratio-button" type="button" data-aspect="landscape" aria-pressed="false">
                     <span class="ratio-shape ratio-landscape" aria-hidden="true"></span>
                     <span><strong>Landscape</strong><small>16:9</small></span>
                   </button>
-                  <button class="ratio-button" type="button" data-aspect="story" data-width="1080" data-height="1920" aria-pressed="false">
+                  <button class="ratio-button" type="button" data-aspect="story" aria-pressed="false">
                     <span class="ratio-shape ratio-story" aria-hidden="true"></span>
                     <span><strong>Story</strong><small>9:16</small></span>
                   </button>
                 </div>
-              </fieldset>
-
-              <fieldset class="control-group">
-                <legend>Canvas size</legend>
-                <div class="dimension-fields">
-                  <label for="outputWidth"><span>Width</span><input id="outputWidth" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
-                  <span aria-hidden="true">×</span>
-                  <label for="outputHeight"><span>Height</span><input id="outputHeight" type="number" min="1" max="12000" step="1" value="1600" inputmode="numeric" /></label>
+                <p class="layout-status" id="layoutStatus">Your image stays at its original resolution.</p>
+                <div class="padding-control-group" role="group" aria-labelledby="paddingLabel">
+                  <div class="padding-control-heading">
+                    <span class="padding-title" id="paddingLabel">Extra padding</span>
+                    <div class="segmented-control padding-unit-control" role="group" aria-label="Padding unit">
+                      <button class="segment padding-unit-button is-active" type="button" data-padding-unit="percent" aria-pressed="true">%</button>
+                      <button class="segment padding-unit-button" type="button" data-padding-unit="pixels" aria-pressed="false">px</button>
+                    </div>
+                  </div>
+                  <div class="padding-fields">
+                    <label for="framePaddingX">
+                      <span>Horizontal (X)</span>
+                      <span class="measurement-input"><input id="framePaddingX" type="number" min="0" max="49" step="0.01" value="10" inputmode="decimal" aria-describedby="paddingNote" /><span class="padding-unit-suffix" aria-hidden="true">%</span></span>
+                    </label>
+                    <label for="framePaddingY">
+                      <span>Vertical (Y)</span>
+                      <span class="measurement-input"><input id="framePaddingY" type="number" min="0" max="49" step="0.01" value="10" inputmode="decimal" aria-describedby="paddingNote" /><span class="padding-unit-suffix" aria-hidden="true">%</span></span>
+                    </label>
+                  </div>
+                  <p class="transparency-note" id="paddingNote">Minimum space per side. The selected shape may add more.</p>
                 </div>
-                <label class="match-ratio-control" for="fixImageBlur">
-                  <input id="fixImageBlur" type="checkbox" checked />
-                  <span><strong>Fix image blur</strong><small>Keeps the image at 1:1 pixels; canvas grows to preserve this aspect.</small></span>
-                </label>
-                <p class="custom-size-note" id="customSizeNote">Waiting for an image · pixels</p>
               </fieldset>
 
               <fieldset class="control-group">
@@ -368,27 +385,6 @@
                   <button class="gradient-button gradient-graphite" type="button" data-gradient="graphite" aria-label="Graphite gradient" aria-pressed="false"></button>
                 </div>
               </fieldset>
-
-              <div class="control-group padding-control-group" role="group" aria-labelledby="paddingLabel">
-                <div class="padding-control-heading">
-                  <span class="padding-title" id="paddingLabel">Padding</span>
-                  <div class="segmented-control padding-unit-control" role="group" aria-label="Padding unit">
-                    <button class="segment padding-unit-button is-active" type="button" data-padding-unit="percent" aria-pressed="true">%</button>
-                    <button class="segment padding-unit-button" type="button" data-padding-unit="pixels" aria-pressed="false">px</button>
-                  </div>
-                </div>
-                <div class="padding-fields">
-                  <label for="framePaddingX">
-                    <span>Horizontal (X)</span>
-                    <span class="measurement-input"><input id="framePaddingX" type="number" min="0" max="49" step="0.1" value="10" inputmode="decimal" aria-describedby="paddingNote" /><span class="padding-unit-suffix" aria-hidden="true">%</span></span>
-                  </label>
-                  <label for="framePaddingY">
-                    <span>Vertical (Y)</span>
-                    <span class="measurement-input"><input id="framePaddingY" type="number" min="0" max="49" step="0.1" value="10" inputmode="decimal" aria-describedby="paddingNote" /><span class="padding-unit-suffix" aria-hidden="true">%</span></span>
-                  </label>
-                </div>
-                <p class="transparency-note" id="paddingNote">Per side of the canvas. Set both to 0 for transparent rounded corners.</p>
-              </div>
 
               <label class="range-field presentation-range" for="cornerRadius">
                 <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
@@ -482,7 +478,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
-    <script src="share-layout.js?v=20260901.1"></script>
-    <script src="app.js?v=20260901.1"></script>
+    <script src="share-layout.js?v=20260901.2"></script>
+    <script src="app.js?v=20260901.2"></script>
   </body>
 </html>
