@@ -133,6 +133,8 @@
     layoutStatus: document.querySelector("#layoutStatus"),
     contentPositionButtons: [...document.querySelectorAll(".content-position-button")],
     gradientButtons: [...document.querySelectorAll(".gradient-button")],
+    backgroundGradientCustomizer: document.querySelector("#backgroundGradientCustomizer"),
+    backgroundGradientInputs: [...document.querySelectorAll("[data-background-gradient-stop]")],
     screenshotEdgeGroup: document.querySelector("#screenshotEdgeGroup"),
     edgeLayerName: document.querySelector("#edgeLayerName"),
     edgePreview: document.querySelector("#edgePreview"),
@@ -142,6 +144,8 @@
     edgeColorValue: document.querySelector("#edgeColorValue"),
     edgeGradientPresets: document.querySelector("#edgeGradientPresets"),
     edgeGradientButtons: [...document.querySelectorAll("[data-edge-gradient]")],
+    edgeGradientCustomizer: document.querySelector("#edgeGradientCustomizer"),
+    edgeGradientInputs: [...document.querySelectorAll("[data-edge-gradient-stop]")],
     edgeWidth: document.querySelector("#edgeWidth"),
     edgeWidthValue: document.querySelector("#edgeWidthValue"),
     edgeGlow: document.querySelector("#edgeGlow"),
@@ -153,6 +157,8 @@
     canvasTextColorValue: document.querySelector("#canvasTextColorValue"),
     canvasTextGradientPresets: document.querySelector("#canvasTextGradientPresets"),
     canvasTextGradientButtons: [...document.querySelectorAll("[data-canvas-text-gradient]")],
+    canvasTextGradientCustomizer: document.querySelector("#canvasTextGradientCustomizer"),
+    canvasTextGradientInputs: [...document.querySelectorAll("[data-canvas-text-gradient-stop]")],
     canvasTextFontButtons: [...document.querySelectorAll(".canvas-text-font-button")],
     canvasTextStyleButtons: [...document.querySelectorAll(".canvas-text-style-button")],
     canvasTextSize: document.querySelector("#canvasTextSize"),
@@ -197,6 +203,7 @@
     frameEnabled: "patchwork.frameEnabled",
     aspectPreset: "patchwork.aspectPreset",
     gradient: "patchwork.gradient",
+    gradientStops: "patchwork.gradientStops",
     framePadding: "patchwork.framePadding",
     framePaddingX: "patchwork.framePaddingX",
     framePaddingY: "patchwork.framePaddingY",
@@ -220,6 +227,7 @@
   const GRADIENTS = {
     dusk: { angle: 135, stops: ["#5b4bdb", "#b44ad7", "#f28b66"] },
     tide: { angle: 135, stops: ["#08b6d8", "#2563eb", "#6336cc"] },
+    midnight: { angle: 135, stops: ["#071b4f", "#1d4ed8", "#7c3aed"] },
     mango: { angle: 135, stops: ["#ffd36e", "#ff8a65", "#c45acb"] },
     iris: { angle: 135, stops: ["#363795", "#8b5cf6", "#ec4899"] },
     mint: { angle: 135, stops: ["#b9fbc0", "#39c6b0", "#157a87"] },
@@ -291,17 +299,20 @@
   let frameEnabled = false;
   let aspectPreset = "image";
   let gradientName = "dusk";
+  let gradientStops = [...GRADIENTS.dusk.stops];
   let paddingUnit = "percent";
   let contentPosition = "center";
   let reflectionEnabled = false;
   let canvasTextFill = "solid";
   let canvasTextGradient = "tide";
+  let canvasTextGradientStops = [...GRADIENTS.tide.stops];
   let canvasTextFont = "sans";
   let canvasTextStyle = "bold";
   let screenshotEdgeDefaults = {
     edgeStyle: "none",
     edgeColor: "#4f7cff",
     edgeGradient: "tide",
+    edgeGradientStops: [...GRADIENTS.tide.stops],
     edgeWidth: 3,
     edgeGlow: 18,
   };
@@ -666,6 +677,14 @@
     contentPosition = ["left", "center", "right"].includes(savedContentPosition) ? savedContentPosition : "center";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
+    try {
+      gradientStops = normalizeGradientStops(
+        JSON.parse(readPreference(STORAGE_KEYS.gradientStops, "null")),
+        gradientName === "transparent" ? "dusk" : gradientName,
+      );
+    } catch {
+      gradientStops = stockGradientStops(gradientName === "transparent" ? "dusk" : gradientName);
+    }
     elements.frameEnabled.checked = frameEnabled;
     elements.reflectionEnabled.checked = reflectionEnabled;
     savePreference(STORAGE_KEYS.aspectPreset, aspectPreset);
@@ -693,6 +712,7 @@
       const savedCanvasText = JSON.parse(readPreference(STORAGE_KEYS.canvasTextSettings, "{}"));
       canvasTextFill = ["solid", "gradient"].includes(savedCanvasText.fill) ? savedCanvasText.fill : "solid";
       canvasTextGradient = GRADIENTS[savedCanvasText.gradient] ? savedCanvasText.gradient : "tide";
+      canvasTextGradientStops = normalizeGradientStops(savedCanvasText.gradientStops, canvasTextGradient);
       canvasTextFont = TEXT_FONTS[savedCanvasText.font] ? savedCanvasText.font : "sans";
       canvasTextStyle = ["normal", "bold", "italic"].includes(savedCanvasText.style) ? savedCanvasText.style : "bold";
       elements.canvasTextContent.value = savedCanvasText.text || "Your headline";
@@ -709,6 +729,10 @@
         edgeStyle: ["none", "solid", "gradient"].includes(savedEdge.edgeStyle) ? savedEdge.edgeStyle : "none",
         edgeColor: savedEdge.edgeColor || "#4f7cff",
         edgeGradient: GRADIENTS[savedEdge.edgeGradient] ? savedEdge.edgeGradient : "tide",
+        edgeGradientStops: normalizeGradientStops(
+          savedEdge.edgeGradientStops,
+          GRADIENTS[savedEdge.edgeGradient] ? savedEdge.edgeGradient : "tide",
+        ),
         edgeWidth: clampNumber(savedEdge.edgeWidth, 1, 16, 3),
         edgeGlow: clampNumber(savedEdge.edgeGlow, 0, 48, 18),
       };
@@ -913,9 +937,36 @@
     };
   }
 
-  function gradientCss(name = gradientName) {
+  function stockGradientStops(name, fallback = "dusk") {
+    return [...(GRADIENTS[name] || GRADIENTS[fallback] || GRADIENTS.dusk).stops];
+  }
+
+  function normalizeGradientStops(stops, name = "dusk") {
+    const defaults = stockGradientStops(name);
+    return defaults.map((fallback, index) => (
+      /^#[0-9a-f]{6}$/i.test(stops?.[index] || "") ? stops[index].toLowerCase() : fallback
+    ));
+  }
+
+  function gradientDefinition(name, customStops) {
+    const definition = GRADIENTS[name] || GRADIENTS.dusk;
+    return { ...definition, stops: normalizeGradientStops(customStops, name) };
+  }
+
+  function syncGradientInputs(inputs, stops, name) {
+    const colors = normalizeGradientStops(stops, name);
+    inputs.forEach((input, index) => {
+      input.value = colors[index];
+    });
+  }
+
+  function readGradientInputs(inputs, name) {
+    return normalizeGradientStops(inputs.map((input) => input.value), name);
+  }
+
+  function gradientCss(name = gradientName, customStops = gradientStops) {
     if (name === "transparent") return "transparent";
-    const gradient = GRADIENTS[name] || GRADIENTS.dusk;
+    const gradient = gradientDefinition(name, customStops);
     return `linear-gradient(${gradient.angle}deg, ${gradient.stops.join(", ")})`;
   }
 
@@ -1012,6 +1063,12 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
+    elements.backgroundGradientCustomizer.hidden = gradientName === "transparent";
+    syncGradientInputs(
+      elements.backgroundGradientInputs,
+      gradientStops,
+      gradientName === "transparent" ? "dusk" : gradientName,
+    );
 
     if (imageLoaded) {
       const layout = getShareLayout();
@@ -1052,7 +1109,18 @@
 
   function setGradient(name) {
     gradientName = (name === "transparent" || GRADIENTS[name]) ? name : "dusk";
+    if (gradientName !== "transparent") gradientStops = stockGradientStops(gradientName);
     savePreference(STORAGE_KEYS.gradient, gradientName);
+    savePreference(STORAGE_KEYS.gradientStops, JSON.stringify(gradientStops));
+    scheduleCurrentImageSave();
+    updatePresentationUI();
+  }
+
+  function setBackgroundGradientStops() {
+    if (gradientName === "transparent") return;
+    gradientStops = readGradientInputs(elements.backgroundGradientInputs, gradientName);
+    savePreference(STORAGE_KEYS.gradientStops, JSON.stringify(gradientStops));
+    scheduleCurrentImageSave();
     updatePresentationUI();
   }
 
@@ -1062,6 +1130,7 @@
       fill: canvasTextFill,
       color: elements.canvasTextColor.value,
       gradient: canvasTextGradient,
+      gradientStops: canvasTextGradientStops,
       font: canvasTextFont,
       style: canvasTextStyle,
       size: Number(elements.canvasTextSize.value),
@@ -1078,6 +1147,8 @@
     });
     elements.canvasTextColorRow.hidden = canvasTextFill !== "solid";
     elements.canvasTextGradientPresets.hidden = canvasTextFill !== "gradient";
+    elements.canvasTextGradientCustomizer.hidden = canvasTextFill !== "gradient";
+    syncGradientInputs(elements.canvasTextGradientInputs, canvasTextGradientStops, canvasTextGradient);
     elements.canvasTextGradientButtons.forEach((button) => {
       const active = button.dataset.canvasTextGradient === canvasTextGradient;
       button.classList.toggle("is-active", active);
@@ -1117,6 +1188,7 @@
     canvasTextFill = object.fillMode === "gradient" ? "gradient" : "solid";
     elements.canvasTextColor.value = object.textColor || "#ffffff";
     canvasTextGradient = GRADIENTS[object.gradientName] ? object.gradientName : "tide";
+    canvasTextGradientStops = normalizeGradientStops(object.gradientStops, canvasTextGradient);
     canvasTextFont = TEXT_FONTS[object.textFont] ? object.textFont : "sans";
     canvasTextStyle = ["normal", "bold", "italic"].includes(object.textStyle) ? object.textStyle : "bold";
     elements.canvasTextSize.value = String(clampNumber(object.fontSize, 12, 240, 72));
@@ -1137,6 +1209,7 @@
     object.fillMode = canvasTextFill;
     object.textColor = elements.canvasTextColor.value;
     object.gradientName = canvasTextGradient;
+    object.gradientStops = [...canvasTextGradientStops];
     object.textFont = canvasTextFont;
     object.textStyle = canvasTextStyle;
     object.fontSize = clampNumber(elements.canvasTextSize.value, 12, 240, 72);
@@ -1176,6 +1249,7 @@
       fillMode: canvasTextFill,
       textColor: elements.canvasTextColor.value,
       gradientName: canvasTextGradient,
+      gradientStops: [...canvasTextGradientStops],
       textFont: canvasTextFont,
       textStyle: canvasTextStyle,
       fontSize,
@@ -1232,6 +1306,10 @@
         : screenshotEdgeDefaults.edgeStyle,
       edgeColor: layer?.edgeColor || screenshotEdgeDefaults.edgeColor,
       edgeGradient: GRADIENTS[layer?.edgeGradient] ? layer.edgeGradient : screenshotEdgeDefaults.edgeGradient,
+      edgeGradientStops: normalizeGradientStops(
+        layer?.edgeGradientStops || screenshotEdgeDefaults.edgeGradientStops,
+        GRADIENTS[layer?.edgeGradient] ? layer.edgeGradient : screenshotEdgeDefaults.edgeGradient,
+      ),
       edgeWidth: clampNumber(layer?.edgeWidth, 1, 16, screenshotEdgeDefaults.edgeWidth),
       edgeGlow: clampNumber(layer?.edgeGlow, 0, 48, screenshotEdgeDefaults.edgeGlow),
     };
@@ -1250,6 +1328,8 @@
     elements.edgeGlowValue.value = String(settings.edgeGlow);
     elements.edgeColorRow.hidden = settings.edgeStyle !== "solid";
     elements.edgeGradientPresets.hidden = settings.edgeStyle !== "gradient";
+    elements.edgeGradientCustomizer.hidden = settings.edgeStyle !== "gradient";
+    syncGradientInputs(elements.edgeGradientInputs, settings.edgeGradientStops, settings.edgeGradient);
     elements.edgeStyleButtons.forEach((button) => {
       const active = button.dataset.edgeStyle === settings.edgeStyle;
       button.classList.toggle("is-active", active);
@@ -1261,14 +1341,14 @@
       button.setAttribute("aria-pressed", String(active));
     });
     const previewColor = settings.edgeStyle === "gradient"
-      ? gradientCss(settings.edgeGradient)
+      ? gradientCss(settings.edgeGradient, settings.edgeGradientStops)
       : settings.edgeColor;
     elements.edgePreview.classList.toggle("is-off", settings.edgeStyle === "none");
     elements.edgePreview.style.setProperty("--edge-color", previewColor);
     elements.edgePreview.style.setProperty(
       "--edge-glow-color",
       settings.edgeStyle === "gradient"
-        ? `${(GRADIENTS[settings.edgeGradient] || GRADIENTS.tide).stops[1]}c2`
+        ? `${settings.edgeGradientStops[1]}c2`
         : `${settings.edgeColor}c2`,
     );
     elements.edgePreview.style.setProperty("--edge-width", `${Math.max(1, Math.min(5, settings.edgeWidth / 2))}px`);
@@ -2335,6 +2415,10 @@
         : screenshotEdgeDefaults.edgeStyle,
       edgeColor: placement.edgeColor || screenshotEdgeDefaults.edgeColor,
       edgeGradient: GRADIENTS[placement.edgeGradient] ? placement.edgeGradient : screenshotEdgeDefaults.edgeGradient,
+      edgeGradientStops: normalizeGradientStops(
+        placement.edgeGradientStops || screenshotEdgeDefaults.edgeGradientStops,
+        GRADIENTS[placement.edgeGradient] ? placement.edgeGradient : screenshotEdgeDefaults.edgeGradient,
+      ),
       edgeWidth: clampNumber(placement.edgeWidth, 1, 16, screenshotEdgeDefaults.edgeWidth),
       edgeGlow: clampNumber(placement.edgeGlow, 0, 48, screenshotEdgeDefaults.edgeGlow),
     };
@@ -4593,12 +4677,17 @@
   }
 
   function fillGradient(targetContext, width, height) {
-    targetContext.fillStyle = linearGradientForBounds(targetContext, gradientName, { x: 0, y: 0, width, height });
+    targetContext.fillStyle = linearGradientForBounds(
+      targetContext,
+      gradientName,
+      { x: 0, y: 0, width, height },
+      gradientStops,
+    );
     targetContext.fillRect(0, 0, width, height);
   }
 
-  function linearGradientForBounds(targetContext, name, bounds) {
-    const definition = GRADIENTS[name] || GRADIENTS.dusk;
+  function linearGradientForBounds(targetContext, name, bounds, customStops) {
+    const definition = gradientDefinition(name, customStops);
     const radians = ((definition.angle - 90) * Math.PI) / 180;
     const directionX = Math.cos(radians);
     const directionY = Math.sin(radians);
@@ -4665,7 +4754,7 @@
     targetContext.textAlign = "left";
     targetContext.textBaseline = "top";
     targetContext.fillStyle = object.fillMode === "gradient"
-      ? linearGradientForBounds(targetContext, object.gradientName || "tide", object)
+      ? linearGradientForBounds(targetContext, object.gradientName || "tide", object, object.gradientStops)
       : object.textColor || "#ffffff";
     if (glowStrength) {
       targetContext.shadowColor = object.glowColor || "#4f7cff";
@@ -4692,7 +4781,7 @@
         bounds.height / 2,
       ));
       const stroke = settings.edgeStyle === "gradient"
-        ? linearGradientForBounds(targetContext, settings.edgeGradient, bounds)
+        ? linearGradientForBounds(targetContext, settings.edgeGradient, bounds, settings.edgeGradientStops)
         : settings.edgeColor;
       targetContext.save();
       roundedRectanglePath(targetContext, bounds.x, bounds.y, bounds.width, bounds.height, radius);
@@ -4707,7 +4796,7 @@
         targetContext.globalAlpha = 0.72;
         targetContext.shadowColor = settings.edgeStyle === "solid"
           ? settings.edgeColor
-          : (GRADIENTS[settings.edgeGradient] || GRADIENTS.tide).stops[1];
+          : settings.edgeGradientStops[1];
         targetContext.shadowBlur = settings.edgeGlow;
       }
       targetContext.stroke();
@@ -5300,6 +5389,9 @@
   elements.gradientButtons.forEach((button) => {
     button.addEventListener("click", () => setGradient(button.dataset.gradient));
   });
+  elements.backgroundGradientInputs.forEach((input) => {
+    input.addEventListener("input", setBackgroundGradientStops);
+  });
   elements.edgeStyleButtons.forEach((button) => {
     button.addEventListener("click", () => syncScreenshotEdgeFromControls({ edgeStyle: button.dataset.edgeStyle }));
   });
@@ -5307,6 +5399,13 @@
     button.addEventListener("click", () => syncScreenshotEdgeFromControls({
       edgeStyle: "gradient",
       edgeGradient: button.dataset.edgeGradient,
+      edgeGradientStops: stockGradientStops(button.dataset.edgeGradient, "tide"),
+    }));
+  });
+  elements.edgeGradientInputs.forEach((input) => {
+    input.addEventListener("input", () => syncScreenshotEdgeFromControls({
+      edgeStyle: "gradient",
+      edgeGradientStops: readGradientInputs(elements.edgeGradientInputs, edgeSettingsFor().edgeGradient),
     }));
   });
   elements.edgeColor.addEventListener("input", () => syncScreenshotEdgeFromControls({ edgeStyle: "solid" }));
@@ -5322,6 +5421,14 @@
   elements.canvasTextGradientButtons.forEach((button) => {
     button.addEventListener("click", () => {
       canvasTextGradient = GRADIENTS[button.dataset.canvasTextGradient] ? button.dataset.canvasTextGradient : "tide";
+      canvasTextGradientStops = stockGradientStops(canvasTextGradient, "tide");
+      canvasTextFill = "gradient";
+      syncCanvasTextObjectFromControls();
+    });
+  });
+  elements.canvasTextGradientInputs.forEach((input) => {
+    input.addEventListener("input", () => {
+      canvasTextGradientStops = readGradientInputs(elements.canvasTextGradientInputs, canvasTextGradient);
       canvasTextFill = "gradient";
       syncCanvasTextObjectFromControls();
     });

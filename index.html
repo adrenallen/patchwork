@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.6" />
+    <link rel="stylesheet" href="styles.css?v=20260901.7" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -348,8 +348,17 @@
                 <button class="effect-gradient-button gradient-tide is-active" type="button" data-canvas-text-gradient="tide" aria-label="Tide gradient" aria-pressed="true"></button>
                 <button class="effect-gradient-button gradient-iris" type="button" data-canvas-text-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
                 <button class="effect-gradient-button gradient-dusk" type="button" data-canvas-text-gradient="dusk" aria-label="Dusk gradient" aria-pressed="false"></button>
+                <button class="effect-gradient-button gradient-midnight" type="button" data-canvas-text-gradient="midnight" aria-label="Midnight gradient" aria-pressed="false"></button>
                 <button class="effect-gradient-button gradient-mango" type="button" data-canvas-text-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
                 <button class="effect-gradient-button gradient-mint" type="button" data-canvas-text-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
+              </div>
+              <div class="gradient-customizer" id="canvasTextGradientCustomizer" hidden>
+                <span>Custom colors</span>
+                <div class="gradient-color-stops">
+                  <label><span>Start</span><input type="color" value="#08b6d8" data-canvas-text-gradient-stop="0" aria-label="Headline gradient start color" /></label>
+                  <label><span>Middle</span><input type="color" value="#2563eb" data-canvas-text-gradient-stop="1" aria-label="Headline gradient middle color" /></label>
+                  <label><span>End</span><input type="color" value="#6336cc" data-canvas-text-gradient-stop="2" aria-label="Headline gradient end color" /></label>
+                </div>
               </div>
               <div class="font-family-field canvas-text-font-field">
                 <span class="field-label" id="canvasTextFontLabel">Font</span>
@@ -501,10 +510,19 @@
                   <button class="gradient-button gradient-transparent" type="button" data-gradient="transparent" aria-label="Transparent background" aria-pressed="false"></button>
                   <button class="gradient-button gradient-dusk is-active" type="button" data-gradient="dusk" aria-label="Dusk gradient" aria-pressed="true"></button>
                   <button class="gradient-button gradient-tide" type="button" data-gradient="tide" aria-label="Tide gradient" aria-pressed="false"></button>
+                  <button class="gradient-button gradient-midnight" type="button" data-gradient="midnight" aria-label="Midnight gradient" aria-pressed="false"></button>
                   <button class="gradient-button gradient-mango" type="button" data-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
                   <button class="gradient-button gradient-iris" type="button" data-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
                   <button class="gradient-button gradient-mint" type="button" data-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
                   <button class="gradient-button gradient-graphite" type="button" data-gradient="graphite" aria-label="Graphite gradient" aria-pressed="false"></button>
+                </div>
+                <div class="gradient-customizer" id="backgroundGradientCustomizer">
+                  <span>Custom colors</span>
+                  <div class="gradient-color-stops">
+                    <label><span>Start</span><input type="color" value="#5b4bdb" data-background-gradient-stop="0" aria-label="Background gradient start color" /></label>
+                    <label><span>Middle</span><input type="color" value="#b44ad7" data-background-gradient-stop="1" aria-label="Background gradient middle color" /></label>
+                    <label><span>End</span><input type="color" value="#f28b66" data-background-gradient-stop="2" aria-label="Background gradient end color" /></label>
+                  </div>
                 </div>
               </fieldset>
 
@@ -530,8 +548,17 @@
                   <button class="effect-gradient-button gradient-tide is-active" type="button" data-edge-gradient="tide" aria-label="Tide gradient" aria-pressed="true"></button>
                   <button class="effect-gradient-button gradient-iris" type="button" data-edge-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
                   <button class="effect-gradient-button gradient-dusk" type="button" data-edge-gradient="dusk" aria-label="Dusk gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-midnight" type="button" data-edge-gradient="midnight" aria-label="Midnight gradient" aria-pressed="false"></button>
                   <button class="effect-gradient-button gradient-mango" type="button" data-edge-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
                   <button class="effect-gradient-button gradient-mint" type="button" data-edge-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
+                </div>
+                <div class="gradient-customizer" id="edgeGradientCustomizer" hidden>
+                  <span>Custom colors</span>
+                  <div class="gradient-color-stops">
+                    <label><span>Start</span><input type="color" value="#08b6d8" data-edge-gradient-stop="0" aria-label="Screenshot edge gradient start color" /></label>
+                    <label><span>Middle</span><input type="color" value="#2563eb" data-edge-gradient-stop="1" aria-label="Screenshot edge gradient middle color" /></label>
+                    <label><span>End</span><input type="color" value="#6336cc" data-edge-gradient-stop="2" aria-label="Screenshot edge gradient end color" /></label>
+                  </div>
                 </div>
                 <label class="range-field effect-range" for="edgeWidth">
                   <span class="range-heading"><span>Outline</span><output id="edgeWidthValue" for="edgeWidth">3 px</output></span>
@@ -638,6 +665,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
     <script src="share-layout.js?v=20260901.3"></script>
-    <script src="app.js?v=20260901.6"></script>
+    <script src="app.js?v=20260901.7"></script>
   </body>
 </html>

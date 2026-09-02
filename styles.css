@@ -469,6 +469,9 @@ kbd {
 }
 
 .active-tool-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 16px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -508,6 +511,9 @@ kbd {
 }
 
 .active-tool-panel .canvas-text-options {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
@@ -1566,7 +1572,7 @@ input[type="range"] {
 
 .gradient-presets {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 7px;
 }
 
@@ -1604,6 +1610,7 @@ input[type="range"] {
 
 .gradient-dusk { background: linear-gradient(135deg, #5b4bdb, #b44ad7 52%, #f28b66); }
 .gradient-tide { background: linear-gradient(135deg, #08b6d8, #2563eb 52%, #6336cc); }
+.gradient-midnight { background: linear-gradient(135deg, #071b4f, #1d4ed8 52%, #7c3aed); }
 .gradient-mango { background: linear-gradient(135deg, #ffd36e, #ff8a65 54%, #c45acb); }
 .gradient-iris { background: linear-gradient(135deg, #363795, #8b5cf6 48%, #ec4899); }
 .gradient-mint { background: linear-gradient(135deg, #b9fbc0, #39c6b0 50%, #157a87); }
@@ -1629,6 +1636,9 @@ input[type="range"] {
 .canvas-text-options {
   display: grid;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 18px;
   padding-top: 17px;
   border-top: 1px solid var(--line);
@@ -1636,6 +1646,14 @@ input[type="range"] {
 
 .canvas-text-options[hidden] {
   display: none;
+}
+
+.canvas-text-options > *,
+.canvas-text-options .segmented-control,
+.canvas-text-options .range-field,
+.canvas-text-options input[type="range"] {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .effect-heading {
@@ -1718,8 +1736,53 @@ input[type="range"] {
 
 .effect-gradient-presets {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 7px;
+}
+
+.gradient-customizer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.gradient-customizer[hidden] {
+  display: none;
+}
+
+.gradient-customizer > span {
+  color: var(--muted);
+  font: 8px/1.25 var(--utility);
+  white-space: nowrap;
+}
+
+.gradient-color-stops {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.gradient-color-stops label {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted);
+  font: 7px var(--utility);
+  cursor: pointer;
+}
+
+.gradient-color-stops input[type="color"] {
+  width: 100%;
+  height: 25px;
+  border-radius: 6px;
 }
 
 .effect-gradient-button {
@@ -1767,6 +1830,9 @@ input[type="range"] {
 }
 
 .canvas-text-copy-field textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 72px;
   padding: 9px 10px;
   border: 1px solid var(--line-strong);
@@ -1784,6 +1850,8 @@ input[type="range"] {
 
 .canvas-text-font-field,
 .canvas-text-style-field {
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
 }
 
@@ -1831,6 +1899,9 @@ input[type="range"] {
 .canvas-text-position {
   display: grid;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1842,6 +1913,8 @@ input[type="range"] {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .canvas-text-position-heading strong {
@@ -1851,10 +1924,20 @@ input[type="range"] {
 
 .canvas-text-position-heading small {
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font: 8px var(--utility);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.canvas-text-position > *,
+.canvas-text-position .padding-fields,
+.canvas-text-position .padding-fields > label,
+.canvas-text-position .measurement-input {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .canvas-text-position input:disabled {
@@ -1867,6 +1950,9 @@ input[type="range"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
   overflow: hidden;
   padding: 0 13px;
@@ -2325,15 +2411,11 @@ input[type="range"] {
 .history-section {
   gap: 4px;
   margin-top: auto;
-  position: sticky;
-  z-index: 3;
-  bottom: 8px;
   padding: 6px;
   border: 1px solid rgba(184, 194, 209, 0.85);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 8px 20px rgba(20, 33, 61, 0.11);
-  backdrop-filter: blur(10px);
 }
 
 .icon-text-button {
@@ -2693,7 +2775,6 @@ input[type="range"] {
 
   .history-section {
     margin-top: 0;
-    position: static;
   }
 }
 
