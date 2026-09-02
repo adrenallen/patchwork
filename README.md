@@ -15,7 +15,7 @@ Patchwork is a fast, local image redaction and screenshot-markup tool. Paste, dr
 - Selectable image layers that can be moved, resized, reordered, and removed
 - A separate Share canvas background that keeps image layers and edits together on the original editable surface
 - Per-screenshot solid or gradient edge lighting with adjustable outline width and glow strength
-- Free-standing canvas text layers with solid or gradient color, multiline headlines, four font families, styling, move, resize, and rotation controls
+- A drag-to-place Headline tool with solid or gradient text, four font families, styling, configurable glow, exact X/Y offsets, move, resize, and rotation controls
 - Solid, diagonal, and crosshatch fills
 - Editable Gaussian and pixelized blur masks with adjustable strength
 - Replacement text with custom background, text color, font size, style, and remembered Sans, Serif, Mono, or handwritten font choices

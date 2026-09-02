@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.3" />
+    <link rel="stylesheet" href="styles.css?v=20260901.4" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -65,6 +65,9 @@
               </button>
               <button class="segment" id="textModeButton" type="button" aria-pressed="false">
                 <span class="text-glyph" aria-hidden="true">Aa</span> Replace text
+              </button>
+              <button class="segment" id="canvasTextModeButton" type="button" aria-pressed="false">
+                <span class="text-glyph headline-glyph" aria-hidden="true">Tt</span> Headline
               </button>
               <button class="segment" id="smartTextModeButton" type="button" aria-pressed="false">
                 <span class="smart-text-glyph" aria-hidden="true">⌕</span> Smart text
@@ -302,6 +305,80 @@
               <p class="annotation-note" id="annotationNote">Drag a box around the area to circle.</p>
             </div>
 
+            <div class="canvas-text-options" id="canvasTextOptions" hidden>
+              <p class="canvas-text-intro">Type a headline, then drag its box anywhere on the final canvas.</p>
+              <label class="stacked-field canvas-text-copy-field" for="canvasTextContent">
+                <span>Headline text</span>
+                <textarea id="canvasTextContent" rows="3" placeholder="Audit&#10;Process&#10;Records">Your headline</textarea>
+              </label>
+              <div class="segmented-control effect-style-control" role="group" aria-label="Headline color style">
+                <button class="segment canvas-text-fill-button is-active" type="button" data-canvas-text-fill="solid" aria-pressed="true">Solid</button>
+                <button class="segment canvas-text-fill-button" type="button" data-canvas-text-fill="gradient" aria-pressed="false">Gradient</button>
+              </div>
+              <div class="field-row" id="canvasTextColorRow">
+                <label class="field-label" for="canvasTextColor">Text color</label>
+                <div class="color-control">
+                  <input id="canvasTextColor" type="color" value="#ffffff" />
+                  <output id="canvasTextColorValue" for="canvasTextColor">#FFFFFF</output>
+                </div>
+              </div>
+              <div class="effect-gradient-presets" id="canvasTextGradientPresets" role="group" aria-label="Headline gradient" hidden>
+                <button class="effect-gradient-button gradient-tide is-active" type="button" data-canvas-text-gradient="tide" aria-label="Tide gradient" aria-pressed="true"></button>
+                <button class="effect-gradient-button gradient-iris" type="button" data-canvas-text-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
+                <button class="effect-gradient-button gradient-dusk" type="button" data-canvas-text-gradient="dusk" aria-label="Dusk gradient" aria-pressed="false"></button>
+                <button class="effect-gradient-button gradient-mango" type="button" data-canvas-text-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
+                <button class="effect-gradient-button gradient-mint" type="button" data-canvas-text-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
+              </div>
+              <div class="font-family-field canvas-text-font-field">
+                <span class="field-label" id="canvasTextFontLabel">Font</span>
+                <div class="segmented-control font-family-control" role="group" aria-labelledby="canvasTextFontLabel">
+                  <button class="segment canvas-text-font-button is-active" type="button" data-canvas-text-font="sans" aria-pressed="true"><span aria-hidden="true">Aa</span><small>Sans</small></button>
+                  <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="serif" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Serif</small></button>
+                  <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="mono" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Mono</small></button>
+                  <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="hand" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Hand</small></button>
+                </div>
+              </div>
+              <div class="text-style-field canvas-text-style-field">
+                <span class="field-label" id="canvasTextStyleLabel">Style</span>
+                <div class="segmented-control text-style-control" role="group" aria-labelledby="canvasTextStyleLabel">
+                  <button class="segment canvas-text-style-button" type="button" data-canvas-text-style="normal" aria-pressed="false">Normal</button>
+                  <button class="segment canvas-text-style-button is-active" type="button" data-canvas-text-style="bold" aria-pressed="true">Bold</button>
+                  <button class="segment canvas-text-style-button" type="button" data-canvas-text-style="italic" aria-pressed="false">Italic</button>
+                </div>
+              </div>
+              <label class="range-field effect-range" for="canvasTextSize">
+                <span class="range-heading"><span>Font size</span><output id="canvasTextSizeValue" for="canvasTextSize">72 px</output></span>
+                <input id="canvasTextSize" type="range" min="12" max="240" step="1" value="72" />
+              </label>
+              <div class="field-row">
+                <label class="field-label" for="canvasTextGlowColor">Glow color</label>
+                <div class="color-control">
+                  <input id="canvasTextGlowColor" type="color" value="#4f7cff" />
+                  <output id="canvasTextGlowColorValue" for="canvasTextGlowColor">#4F7CFF</output>
+                </div>
+              </div>
+              <label class="range-field effect-range" for="canvasTextGlow">
+                <span class="range-heading"><span>Text glow</span><output id="canvasTextGlowValue" for="canvasTextGlow">0</output></span>
+                <input id="canvasTextGlow" type="range" min="0" max="48" step="1" value="0" />
+              </label>
+              <div class="canvas-text-position" id="canvasTextPosition">
+                <div class="canvas-text-position-heading"><strong>Offset</strong><small>Exact position for the selected headline.</small></div>
+                <div class="padding-fields">
+                  <label for="canvasTextX">
+                    <span>X</span>
+                    <span class="measurement-input"><input id="canvasTextX" type="number" step="1" value="0" inputmode="numeric" disabled /><span aria-hidden="true">px</span></span>
+                  </label>
+                  <label for="canvasTextY">
+                    <span>Y</span>
+                    <span class="measurement-input"><input id="canvasTextY" type="number" step="1" value="0" inputmode="numeric" disabled /><span aria-hidden="true">px</span></span>
+                  </label>
+                </div>
+              </div>
+              <button class="canvas-text-add-button" id="canvasTextAddButton" type="button">
+                <span>Insert centered</span><span aria-hidden="true">＋</span>
+              </button>
+            </div>
+
             <button class="apply-button" id="applyButton" type="button" disabled>
               <span id="applyButtonLabel">Apply mask</span>
               <span aria-hidden="true">+</span>
@@ -429,57 +506,6 @@
                 </label>
               </fieldset>
 
-              <fieldset class="control-group canvas-text-group">
-                <legend>Canvas text</legend>
-                <p class="canvas-text-intro">Add movable headlines anywhere on the final canvas.</p>
-                <label class="stacked-field canvas-text-copy-field" for="canvasTextContent">
-                  <span>Text</span>
-                  <textarea id="canvasTextContent" rows="3" placeholder="Audit&#10;Process&#10;Records">Your headline</textarea>
-                </label>
-                <div class="segmented-control effect-style-control" role="group" aria-label="Canvas text color style">
-                  <button class="segment canvas-text-fill-button is-active" type="button" data-canvas-text-fill="solid" aria-pressed="true">Solid</button>
-                  <button class="segment canvas-text-fill-button" type="button" data-canvas-text-fill="gradient" aria-pressed="false">Gradient</button>
-                </div>
-                <div class="field-row" id="canvasTextColorRow">
-                  <label class="field-label" for="canvasTextColor">Text color</label>
-                  <div class="color-control">
-                    <input id="canvasTextColor" type="color" value="#ffffff" />
-                    <output id="canvasTextColorValue" for="canvasTextColor">#FFFFFF</output>
-                  </div>
-                </div>
-                <div class="effect-gradient-presets" id="canvasTextGradientPresets" role="group" aria-label="Canvas text gradient" hidden>
-                  <button class="effect-gradient-button gradient-tide is-active" type="button" data-canvas-text-gradient="tide" aria-label="Tide gradient" aria-pressed="true"></button>
-                  <button class="effect-gradient-button gradient-iris" type="button" data-canvas-text-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
-                  <button class="effect-gradient-button gradient-dusk" type="button" data-canvas-text-gradient="dusk" aria-label="Dusk gradient" aria-pressed="false"></button>
-                  <button class="effect-gradient-button gradient-mango" type="button" data-canvas-text-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
-                  <button class="effect-gradient-button gradient-mint" type="button" data-canvas-text-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
-                </div>
-                <div class="font-family-field canvas-text-font-field">
-                  <span class="field-label" id="canvasTextFontLabel">Font</span>
-                  <div class="segmented-control font-family-control" role="group" aria-labelledby="canvasTextFontLabel">
-                    <button class="segment canvas-text-font-button is-active" type="button" data-canvas-text-font="sans" aria-pressed="true"><span aria-hidden="true">Aa</span><small>Sans</small></button>
-                    <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="serif" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Serif</small></button>
-                    <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="mono" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Mono</small></button>
-                    <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="hand" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Hand</small></button>
-                  </div>
-                </div>
-                <div class="text-style-field canvas-text-style-field">
-                  <span class="field-label" id="canvasTextStyleLabel">Style</span>
-                  <div class="segmented-control text-style-control" role="group" aria-labelledby="canvasTextStyleLabel">
-                    <button class="segment canvas-text-style-button" type="button" data-canvas-text-style="normal" aria-pressed="false">Normal</button>
-                    <button class="segment canvas-text-style-button is-active" type="button" data-canvas-text-style="bold" aria-pressed="true">Bold</button>
-                    <button class="segment canvas-text-style-button" type="button" data-canvas-text-style="italic" aria-pressed="false">Italic</button>
-                  </div>
-                </div>
-                <label class="range-field effect-range" for="canvasTextSize">
-                  <span class="range-heading"><span>Font size</span><output id="canvasTextSizeValue" for="canvasTextSize">72 px</output></span>
-                  <input id="canvasTextSize" type="range" min="12" max="240" step="1" value="72" />
-                </label>
-                <button class="canvas-text-add-button" id="canvasTextAddButton" type="button">
-                  <span>Add text layer</span><span aria-hidden="true">＋</span>
-                </button>
-              </fieldset>
-
               <label class="range-field presentation-range" for="cornerRadius">
                 <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
                 <input id="cornerRadius" type="range" min="0" max="64" step="2" value="24" />
@@ -573,6 +599,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
     <script src="share-layout.js?v=20260901.3"></script>
-    <script src="app.js?v=20260901.3"></script>
+    <script src="app.js?v=20260901.4"></script>
   </body>
 </html>

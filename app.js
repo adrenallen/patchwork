@@ -33,6 +33,7 @@
     maskModeButton: document.querySelector("#maskModeButton"),
     blurModeButton: document.querySelector("#blurModeButton"),
     textModeButton: document.querySelector("#textModeButton"),
+    canvasTextModeButton: document.querySelector("#canvasTextModeButton"),
     smartTextModeButton: document.querySelector("#smartTextModeButton"),
     circleModeButton: document.querySelector("#circleModeButton"),
     arrowModeButton: document.querySelector("#arrowModeButton"),
@@ -44,6 +45,7 @@
     blurStrength: document.querySelector("#blurStrength"),
     blurStrengthValue: document.querySelector("#blurStrengthValue"),
     textOptions: document.querySelector("#textOptions"),
+    canvasTextOptions: document.querySelector("#canvasTextOptions"),
     smartTextOptions: document.querySelector("#smartTextOptions"),
     analyzeTextButton: document.querySelector("#analyzeTextButton"),
     smartTextProgress: document.querySelector("#smartTextProgress"),
@@ -150,6 +152,13 @@
     canvasTextStyleButtons: [...document.querySelectorAll(".canvas-text-style-button")],
     canvasTextSize: document.querySelector("#canvasTextSize"),
     canvasTextSizeValue: document.querySelector("#canvasTextSizeValue"),
+    canvasTextGlowColor: document.querySelector("#canvasTextGlowColor"),
+    canvasTextGlowColorValue: document.querySelector("#canvasTextGlowColorValue"),
+    canvasTextGlow: document.querySelector("#canvasTextGlow"),
+    canvasTextGlowValue: document.querySelector("#canvasTextGlowValue"),
+    canvasTextPosition: document.querySelector("#canvasTextPosition"),
+    canvasTextX: document.querySelector("#canvasTextX"),
+    canvasTextY: document.querySelector("#canvasTextY"),
     canvasTextAddButton: document.querySelector("#canvasTextAddButton"),
     paddingUnitButtons: [...document.querySelectorAll(".padding-unit-button")],
     framePaddingX: document.querySelector("#framePaddingX"),
@@ -671,6 +680,8 @@
       elements.canvasTextContent.value = savedCanvasText.text || "Your headline";
       elements.canvasTextColor.value = savedCanvasText.color || "#ffffff";
       elements.canvasTextSize.value = String(clampNumber(savedCanvasText.size, 12, 240, 72));
+      elements.canvasTextGlowColor.value = savedCanvasText.glowColor || "#4f7cff";
+      elements.canvasTextGlow.value = String(clampNumber(savedCanvasText.glow, 0, 48, 0));
     } catch {
       // Keep the visible canvas text defaults.
     }
@@ -1036,6 +1047,8 @@
       font: canvasTextFont,
       style: canvasTextStyle,
       size: Number(elements.canvasTextSize.value),
+      glowColor: elements.canvasTextGlowColor.value,
+      glow: Number(elements.canvasTextGlow.value),
     }));
   }
 
@@ -1064,6 +1077,18 @@
     });
     elements.canvasTextColorValue.value = elements.canvasTextColor.value.toUpperCase();
     elements.canvasTextSizeValue.value = `${elements.canvasTextSize.value} px`;
+    elements.canvasTextGlowColorValue.value = elements.canvasTextGlowColor.value.toUpperCase();
+    elements.canvasTextGlowValue.value = String(elements.canvasTextGlow.value);
+    const object = activeObject()?.mode === "canvas-text" ? activeObject() : null;
+    elements.canvasTextX.disabled = !object;
+    elements.canvasTextY.disabled = !object;
+    if (object) {
+      elements.canvasTextX.value = String(Math.round(object.x));
+      elements.canvasTextY.value = String(Math.round(object.y));
+    } else {
+      elements.canvasTextX.value = "0";
+      elements.canvasTextY.value = "0";
+    }
     elements.canvasTextAddButton.disabled = !imageLoaded || !frameEnabled || !elements.canvasTextContent.value.trim();
     saveCanvasTextPreferences();
   }
@@ -1077,6 +1102,8 @@
     canvasTextFont = TEXT_FONTS[object.textFont] ? object.textFont : "sans";
     canvasTextStyle = ["normal", "bold", "italic"].includes(object.textStyle) ? object.textStyle : "bold";
     elements.canvasTextSize.value = String(clampNumber(object.fontSize, 12, 240, 72));
+    elements.canvasTextGlowColor.value = object.glowColor || "#4f7cff";
+    elements.canvasTextGlow.value = String(clampNumber(object.glowStrength, 0, 48, 0));
     updateCanvasTextControls();
   }
 
@@ -1095,6 +1122,17 @@
     object.textFont = canvasTextFont;
     object.textStyle = canvasTextStyle;
     object.fontSize = clampNumber(elements.canvasTextSize.value, 12, 240, 72);
+    object.glowColor = elements.canvasTextGlowColor.value;
+    object.glowStrength = clampNumber(elements.canvasTextGlow.value, 0, 48, 0);
+    const dimensions = getOutputDimensions();
+    const requestedX = Number(elements.canvasTextX.value);
+    const requestedY = Number(elements.canvasTextY.value);
+    if (elements.canvasTextX.value !== "" && Number.isFinite(requestedX)) {
+      object.x = Math.max(0, Math.min(dimensions.width - object.width, Math.round(requestedX)));
+    }
+    if (elements.canvasTextY.value !== "" && Number.isFinite(requestedY)) {
+      object.y = Math.max(0, Math.min(dimensions.height - object.height, Math.round(requestedY)));
+    }
     updateCanvasTextControls();
     syncSelectionFromActiveObject();
     renderLayers();
@@ -1104,35 +1142,17 @@
     settingsHistoryTimer = window.setTimeout(commitPendingSettingsHistory, 450);
   }
 
-  function createCanvasTextLayer() {
+  function canvasTextObjectForBounds(bounds) {
     const text = elements.canvasTextContent.value.trim();
-    if (!imageLoaded || !frameEnabled || !text) return;
-    commitPendingSettingsHistory();
-    rememberHistoryStep();
-    const layout = getShareLayout();
-    const dimensions = layout.dimensions;
     const fontSize = clampNumber(elements.canvasTextSize.value, 12, 240, 72);
-    const lineCount = Math.max(1, text.split("\n").length);
-    const leftSpace = layout.content.x;
-    const rightSpace = dimensions.width - layout.content.x - layout.content.width;
-    const useLeftSpace = leftSpace >= rightSpace;
-    const sideSpace = Math.max(leftSpace, rightSpace);
-    const sideMargin = Math.max(12, Math.min(32, dimensions.width * 0.035));
-    const hasTextColumn = sideSpace >= Math.max(120, fontSize * 2.5);
-    const width = hasTextColumn
-      ? Math.max(80, sideSpace - sideMargin * 2)
-      : Math.max(80, Math.min(dimensions.width * 0.42, fontSize * 10));
-    const height = Math.max(fontSize * 1.25, Math.min(dimensions.height * 0.56, fontSize * lineCount * 1.12));
-    const object = {
+    return {
       id: createObjectId(),
       mode: "canvas-text",
       space: "share",
-      x: hasTextColumn
-        ? (useLeftSpace ? sideMargin : layout.content.x + layout.content.width + sideMargin)
-        : Math.max(12, dimensions.width * 0.055),
-      y: Math.max(12, dimensions.height * 0.24),
-      width,
-      height,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
       rotation: 0,
       text,
       fillMode: canvasTextFill,
@@ -1141,9 +1161,14 @@
       textFont: canvasTextFont,
       textStyle: canvasTextStyle,
       fontSize,
+      glowColor: elements.canvasTextGlowColor.value,
+      glowStrength: clampNumber(elements.canvasTextGlow.value, 0, 48, 0),
       lineHeight: 1.04,
       scaleTextOnResize: true,
     };
+  }
+
+  function finishCanvasTextPlacement(object, message) {
     placedObjects.push(object);
     selectOnlyObject(object);
     activeImageLayerId = null;
@@ -1153,8 +1178,33 @@
     updateControls();
     render();
     scheduleCurrentImageSave();
-    showToast("Canvas text added. Drag it anywhere on the export.");
+    showToast(message);
     canvas.focus({ preventScroll: true });
+  }
+
+  function createCanvasTextLayer() {
+    const text = elements.canvasTextContent.value.trim();
+    if (!imageLoaded || !frameEnabled || !text) return;
+    commitPendingSettingsHistory();
+    rememberHistoryStep();
+    const dimensions = getOutputDimensions();
+    const fontSize = clampNumber(elements.canvasTextSize.value, 12, 240, 72);
+    const lineCount = Math.max(1, text.split("\n").length);
+    const width = Math.max(2, Math.min(
+      dimensions.width,
+      Math.max(120, Math.min(dimensions.width * 0.46, fontSize * 10)),
+    ));
+    const height = Math.max(2, Math.min(
+      dimensions.height,
+      Math.max(fontSize * 1.25, Math.min(dimensions.height * 0.56, fontSize * lineCount * 1.12)),
+    ));
+    const object = canvasTextObjectForBounds({
+      x: (dimensions.width - width) / 2,
+      y: (dimensions.height - height) / 2,
+      width,
+      height,
+    });
+    finishCanvasTextPlacement(object, "Headline inserted. Drag it anywhere on the canvas.");
   }
 
   function edgeSettingsFor(layer = edgeTargetLayer()) {
@@ -2654,9 +2704,9 @@
       const copy = document.createElement("span");
       copy.className = "image-layer-copy";
       const title = document.createElement("strong");
-      title.textContent = object.text?.split("\n").find(Boolean) || "Canvas text";
+      title.textContent = object.text?.split("\n").find(Boolean) || "Headline";
       const detail = document.createElement("small");
-      detail.textContent = `${object.fillMode === "gradient" ? "Gradient" : "Solid"} · ${Math.round(object.fontSize || 72)} px`;
+      detail.textContent = `${object.fillMode === "gradient" ? "Gradient" : "Solid"} · ${Math.round(object.fontSize || 72)} px${object.glowStrength ? ` · Glow ${Math.round(object.glowStrength)}` : ""}`;
       copy.append(title, detail);
       select.append(thumbnail, copy);
       select.addEventListener("click", () => selectPlacedObject(object));
@@ -3936,6 +3986,10 @@
       drawSelectionOutline(targetContext, imageLayerBounds(activeImageLayer()));
       return;
     }
+    if (mode === "canvas-text" && selection) {
+      drawSelectionOutline(targetContext, selection);
+      return;
+    }
     const transform = shareContentTransform();
     if (!selectedObject && mode === "blur" && selection) {
       drawBlurRegion(targetContext, shareBlurObject({ ...selection, blurStyle, blurStrength }));
@@ -4002,7 +4056,8 @@
     const selectedCount = selectedObjects().length;
     const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
     const hasToolSelection = ["arrow", "line"].includes(mode) ? arrowLength() >= 2 : hasAreaSelection;
-    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop", "smart", "canvas-text"].includes(mode);
+    const hasHeadlineText = mode !== "canvas-text" || Boolean(elements.canvasTextContent.value.trim());
+    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || !hasHeadlineText || Boolean(selectedObject) || ["arrange", "crop", "smart"].includes(mode);
     elements.applyButton.hidden = ["arrange", "crop", "smart", "canvas-text"].includes(mode);
     elements.analyzeTextButton.disabled = !imageLoaded || smartTextAnalyzing;
     elements.clearSelectionButton.disabled = !selection;
@@ -4019,7 +4074,7 @@
       arrange: "Arrange image",
       crop: "Crop image",
       smart: "Analyze text",
-      "canvas-text": "Canvas text selected",
+      "canvas-text": "Place headline",
     }[mode];
     updateFontSizeUI();
 
@@ -4034,7 +4089,7 @@
         ? mode === "arrange"
           ? "Select an image"
           : mode === "canvas-text"
-            ? "Select canvas text"
+            ? "Drag headline box"
           : mode === "crop"
             ? "Drag crop area"
             : mode === "smart"
@@ -4045,6 +4100,7 @@
   }
 
   function setMode(nextMode, { preserveActive = false, preserveLayer = false, loadSettings = true } = {}) {
+    const previousMode = mode;
     if (!activeObject()) captureToolSettings(mode);
     if (panModeEnabled) {
       panModeEnabled = false;
@@ -4062,15 +4118,29 @@
       if (!activeObjectId) selection = null;
     }
     mode = ["arrange", "mask", "blur", "text", "smart", "circle", "arrow", "line", "crop", "canvas-text"].includes(nextMode) ? nextMode : "mask";
+    if (!activeObject() && ((previousMode === "canvas-text") !== (mode === "canvas-text"))) {
+      selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+    }
     const isText = mode === "text";
     const isSmartText = mode === "smart";
     const isAnnotation = ["circle", "arrow", "line"].includes(mode);
     const isBlur = mode === "blur";
+    const isCanvasText = mode === "canvas-text";
+    if (isCanvasText && imageLoaded && !frameEnabled) {
+      frameEnabled = true;
+      elements.frameEnabled.checked = true;
+      savePreference(STORAGE_KEYS.frameEnabled, "true");
+      updatePresentationUI();
+      showToast("Share canvas enabled for headline placement.");
+    }
     [
       [elements.arrangeModeButton, "arrange"],
       [elements.maskModeButton, "mask"],
       [elements.blurModeButton, "blur"],
       [elements.textModeButton, "text"],
+      [elements.canvasTextModeButton, "canvas-text"],
       [elements.smartTextModeButton, "smart"],
       [elements.circleModeButton, "circle"],
       [elements.arrowModeButton, "arrow"],
@@ -4086,6 +4156,7 @@
     elements.smartTextOptions.hidden = !isSmartText;
     elements.blurOptions.hidden = !isBlur;
     elements.annotationOptions.hidden = !isAnnotation;
+    elements.canvasTextOptions.hidden = !isCanvasText;
     elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
       ? `Drag the ${mode}, then move the diamond handle to bend it.`
       : "Drag a box around the area to circle.";
@@ -4101,12 +4172,15 @@
         : mode === "crop"
           ? "Drag a box to crop immediately"
           : mode === "canvas-text"
-            ? "Drag text to move · corners resize · top handle rotates"
+            ? activeObject()
+              ? "Drag to move · corners resize · top handle rotates · Offset fine-tunes"
+              : "Type a headline · drag a box anywhere to place"
           : mode === "smart"
             ? "Analyze text · search phrases · preview every match"
           : "Drag to place · click an item to edit";
     }
     updateControls();
+    if (isCanvasText) updateCanvasTextControls();
     render();
     if (isText && selection) elements.replacementText.focus({ preventScroll: true });
   }
@@ -4355,6 +4429,12 @@
   function applyCurrentTool() {
     if (!selection || elements.applyButton.disabled) return;
     rememberHistoryStep();
+    if (mode === "canvas-text") {
+      const object = canvasTextObjectForBounds({ ...selection });
+      selectionInteraction = null;
+      finishCanvasTextPlacement(object, "Headline placed. Drag it or use Offset to fine-tune.");
+      return;
+    }
     const object = createPlacedObject();
     placedObjects.push(object);
     selectOnlyObject(object);
@@ -4537,6 +4617,7 @@
     if (!object.text) return;
     const size = Math.max(1, Number(object.fontSize) || 72);
     const lineHeight = size * Math.max(0.8, Number(object.lineHeight) || 1.04);
+    const glowStrength = clampNumber(object.glowStrength, 0, 48, 0);
     targetContext.save();
     if (object.rotation) {
       const center = rectangularObjectCenter(object);
@@ -4545,7 +4626,13 @@
       targetContext.translate(-center.x, -center.y);
     }
     targetContext.beginPath();
-    targetContext.rect(object.x, object.y, object.width, object.height);
+    const glowOverflow = glowStrength * 2;
+    targetContext.rect(
+      object.x - glowOverflow,
+      object.y - glowOverflow,
+      object.width + glowOverflow * 2,
+      object.height + glowOverflow * 2,
+    );
     targetContext.clip();
     targetContext.font = objectFont(object, size);
     targetContext.textAlign = "left";
@@ -4553,6 +4640,10 @@
     targetContext.fillStyle = object.fillMode === "gradient"
       ? linearGradientForBounds(targetContext, object.gradientName || "tide", object)
       : object.textColor || "#ffffff";
+    if (glowStrength) {
+      targetContext.shadowColor = object.glowColor || "#4f7cff";
+      targetContext.shadowBlur = glowStrength;
+    }
     const lines = wrapCanvasTextLines(targetContext, object.text, Math.max(1, object.width));
     lines.forEach((line, index) => {
       const y = object.y + index * lineHeight;
@@ -4755,14 +4846,6 @@
       beginObjectInteraction(object, outputPoint, canvasTextHandle);
       canvas.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
-      return;
-    }
-    if (mode === "canvas-text") {
-      clearSelectedObjects();
-      selection = null;
-      renderLayers();
-      updateControls();
-      render();
       return;
     }
     if (mode === "smart") return;
@@ -4988,6 +5071,8 @@
         placedObjects[index] = translatedObject(selectedObject, deltaX, deltaY);
         syncSelectionFromActiveObject();
         rebuildBaseCanvas();
+        if (selectedObject.mode === "canvas-text") loadCanvasTextObjectIntoControls(activeObject());
+        renderLayers();
         updateControls();
         render();
         scheduleCurrentImageSave();
@@ -4995,7 +5080,7 @@
       return;
     }
 
-    if (event.key === " " && !selection && !["arrange", "crop", "smart"].includes(mode)) {
+    if (event.key === " " && !selection && !["arrange", "crop", "smart", "canvas-text"].includes(mode)) {
       event.preventDefault();
       selection = {
         x: documentWidth() * 0.25,
@@ -5047,6 +5132,7 @@
   elements.maskModeButton.addEventListener("click", () => setMode("mask"));
   elements.blurModeButton.addEventListener("click", () => setMode("blur"));
   elements.textModeButton.addEventListener("click", () => setMode("text"));
+  elements.canvasTextModeButton.addEventListener("click", () => setMode("canvas-text"));
   elements.smartTextModeButton.addEventListener("click", () => setMode("smart"));
   elements.circleModeButton.addEventListener("click", () => setMode("circle"));
   elements.arrowModeButton.addEventListener("click", () => setMode("arrow"));
@@ -5233,6 +5319,10 @@
     syncCanvasTextObjectFromControls();
   });
   elements.canvasTextSize.addEventListener("input", syncCanvasTextObjectFromControls);
+  elements.canvasTextGlowColor.addEventListener("input", syncCanvasTextObjectFromControls);
+  elements.canvasTextGlow.addEventListener("input", syncCanvasTextObjectFromControls);
+  elements.canvasTextX.addEventListener("input", syncCanvasTextObjectFromControls);
+  elements.canvasTextY.addEventListener("input", syncCanvasTextObjectFromControls);
   elements.canvasTextAddButton.addEventListener("click", createCanvasTextLayer);
   elements.paddingUnitButtons.forEach((button) => {
     button.addEventListener("click", () => setPaddingUnit(button.dataset.paddingUnit));
@@ -5350,6 +5440,10 @@
     elements.canvasTextContent,
     elements.canvasTextColor,
     elements.canvasTextSize,
+    elements.canvasTextGlowColor,
+    elements.canvasTextGlow,
+    elements.canvasTextX,
+    elements.canvasTextY,
   ].forEach((input) => input.addEventListener("change", commitPendingSettingsHistory));
   document.addEventListener("keydown", (event) => {
     const modifier = event.metaKey || event.ctrlKey;

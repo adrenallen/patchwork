@@ -1399,12 +1399,23 @@ input[type="range"] {
   background-size: 10px 10px;
 }
 
-.screenshot-edge-group,
-.canvas-text-group {
+.screenshot-edge-group {
   display: grid;
   gap: 10px;
   padding-top: 15px;
   border-top: 1px solid var(--line);
+}
+
+.canvas-text-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 17px;
+  border-top: 1px solid var(--line);
+}
+
+.canvas-text-options[hidden] {
+  display: none;
 }
 
 .effect-heading {
@@ -1466,7 +1477,7 @@ input[type="range"] {
   margin: 0;
 }
 
-.canvas-text-group .effect-style-control {
+.canvas-text-options .effect-style-control {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -1592,6 +1603,44 @@ input[type="range"] {
 
 .canvas-text-style-button[data-canvas-text-style="bold"] { font-weight: 800; }
 .canvas-text-style-button[data-canvas-text-style="italic"] { font-style: italic; }
+
+.headline-glyph {
+  letter-spacing: -0.08em;
+}
+
+.canvas-text-position {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f8fb;
+}
+
+.canvas-text-position-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.canvas-text-position-heading strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.canvas-text-position-heading small {
+  overflow: hidden;
+  color: var(--muted);
+  font: 8px var(--utility);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-text-position input:disabled {
+  background: #edf1f6;
+  color: #94a3b8;
+}
 
 .canvas-text-add-button {
   position: relative;
