@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.4" />
+    <link rel="stylesheet" href="styles.css?v=20260901.5" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -49,44 +49,68 @@
 
           <section class="tool-section edit-section" id="editControls" aria-disabled="true">
             <div class="section-heading">
-              <span class="step-label">Tool</span>
+              <span class="step-label">Tools</span>
               <span class="selection-readout" id="selectionReadout">Draw a box</span>
             </div>
 
-            <div class="segmented-control patch-mode-control" role="group" aria-label="Editing tool">
-              <button class="segment" id="arrangeModeButton" type="button" aria-pressed="false">
-                <span class="arrange-glyph" aria-hidden="true">✥</span> Arrange
-              </button>
-              <button class="segment is-active" id="maskModeButton" type="button" aria-pressed="true">
-                <span class="mode-swatch" aria-hidden="true"></span> Mask
-              </button>
-              <button class="segment" id="blurModeButton" type="button" aria-pressed="false">
-                <span class="blur-glyph" aria-hidden="true">▦</span> Blur
-              </button>
-              <button class="segment" id="textModeButton" type="button" aria-pressed="false">
-                <span class="text-glyph" aria-hidden="true">Aa</span> Replace text
-              </button>
-              <button class="segment" id="canvasTextModeButton" type="button" aria-pressed="false">
-                <span class="text-glyph headline-glyph" aria-hidden="true">Tt</span> Headline
-              </button>
-              <button class="segment" id="smartTextModeButton" type="button" aria-pressed="false">
-                <span class="smart-text-glyph" aria-hidden="true">⌕</span> Smart text
-              </button>
-              <button class="segment" id="circleModeButton" type="button" aria-pressed="false">
-                <span class="annotation-glyph circle-glyph" aria-hidden="true"></span> Circle
-              </button>
-              <button class="segment" id="arrowModeButton" type="button" aria-pressed="false">
-                <span class="annotation-glyph arrow-glyph" aria-hidden="true">↗</span> Arrow
-              </button>
-              <button class="segment" id="lineModeButton" type="button" aria-pressed="false">
-                <span class="annotation-glyph line-glyph" aria-hidden="true"></span> Line
-              </button>
-              <button class="segment" id="cropModeButton" type="button" aria-pressed="false">
-                <span class="crop-glyph" aria-hidden="true">⌗</span> Crop
-              </button>
+            <div class="tool-picker" role="group" aria-label="Editing tools">
+              <div class="tool-category">
+                <span class="tool-category-label">Image</span>
+                <div class="tool-category-grid">
+                  <button class="tool-button" id="arrangeModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon arrange-glyph" aria-hidden="true">✥</span><span>Arrange</span>
+                  </button>
+                  <button class="tool-button" id="cropModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon crop-glyph" aria-hidden="true">⌗</span><span>Crop</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="tool-category">
+                <span class="tool-category-label">Cover</span>
+                <div class="tool-category-grid">
+                  <button class="tool-button is-active" id="maskModeButton" type="button" aria-pressed="true">
+                    <span class="tool-button-icon" aria-hidden="true"><span class="mode-swatch"></span></span><span>Mask</span>
+                  </button>
+                  <button class="tool-button" id="blurModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon blur-glyph" aria-hidden="true">▦</span><span>Blur</span>
+                  </button>
+                  <button class="tool-button" id="textModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon text-glyph" aria-hidden="true">Aa</span><span>Replace text</span>
+                  </button>
+                  <button class="tool-button" id="smartTextModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon smart-text-glyph" aria-hidden="true">⌕</span><span>Smart text</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="tool-category">
+                <span class="tool-category-label">Add</span>
+                <div class="tool-category-grid">
+                  <button class="tool-button" id="canvasTextModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon text-glyph headline-glyph" aria-hidden="true">Tt</span><span>Headline</span>
+                  </button>
+                  <button class="tool-button" id="circleModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon" aria-hidden="true"><span class="annotation-glyph circle-glyph"></span></span><span>Circle</span>
+                  </button>
+                  <button class="tool-button" id="arrowModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon" aria-hidden="true"><span class="annotation-glyph arrow-glyph">↗</span></span><span>Arrow</span>
+                  </button>
+                  <button class="tool-button" id="lineModeButton" type="button" aria-pressed="false">
+                    <span class="tool-button-icon" aria-hidden="true"><span class="annotation-glyph line-glyph"></span></span><span>Line</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div id="patchFillOptions">
+            <div class="active-tool-panel has-settings" id="activeToolPanel">
+              <div class="active-tool-heading">
+                <span>Selected tool</span>
+                <strong id="activeToolName">Mask</strong>
+                <p id="activeToolDescription">Cover an area with a color or pattern.</p>
+              </div>
+
+              <div id="patchFillOptions">
               <div class="field-row">
                 <label class="field-label" for="backgroundColor">Background</label>
                 <div class="color-control">
@@ -173,7 +197,6 @@
             </div>
 
             <div class="smart-text-options" id="smartTextOptions" hidden>
-              <p class="smart-text-intro">Find text locally, then redact or replace every selected match.</p>
               <button class="button button-secondary smart-analyze-button" id="analyzeTextButton" type="button">
                 <span aria-hidden="true">⌕</span>
                 <span>Analyze image text</span>
@@ -306,7 +329,6 @@
             </div>
 
             <div class="canvas-text-options" id="canvasTextOptions" hidden>
-              <p class="canvas-text-intro">Type a headline, then drag its box anywhere on the final canvas.</p>
               <label class="stacked-field canvas-text-copy-field" for="canvasTextContent">
                 <span>Headline text</span>
                 <textarea id="canvasTextContent" rows="3" placeholder="Audit&#10;Process&#10;Records">Your headline</textarea>
@@ -379,10 +401,11 @@
               </button>
             </div>
 
-            <button class="apply-button" id="applyButton" type="button" disabled>
-              <span id="applyButtonLabel">Apply mask</span>
-              <span aria-hidden="true">+</span>
-            </button>
+              <button class="apply-button" id="applyButton" type="button" disabled>
+                <span id="applyButtonLabel">Apply mask</span>
+                <span aria-hidden="true">+</span>
+              </button>
+            </div>
           </section>
 
           <section class="presentation-section" aria-label="Share canvas settings">
@@ -400,9 +423,9 @@
               <fieldset class="control-group canvas-layout-group">
                 <legend>Canvas &amp; padding</legend>
                 <div class="layout-size-strip" aria-live="polite">
-                  <span><small>Image</small><strong id="imageSizeReadout">Waiting</strong></span>
+                  <span><small>Image</small><strong id="imageSizeReadout">No image</strong></span>
                   <span class="layout-size-arrow" aria-hidden="true">→</span>
-                  <span><small>Export</small><strong id="exportSizeReadout">Waiting</strong></span>
+                  <span><small>Export</small><strong id="exportSizeReadout">—</strong></span>
                 </div>
                 <span class="layout-field-label">Shape</span>
                 <div class="ratio-presets">
@@ -599,6 +622,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
     <script src="share-layout.js?v=20260901.3"></script>
-    <script src="app.js?v=20260901.4"></script>
+    <script src="app.js?v=20260901.5"></script>
   </body>
 </html>

@@ -39,6 +39,9 @@
     arrowModeButton: document.querySelector("#arrowModeButton"),
     lineModeButton: document.querySelector("#lineModeButton"),
     cropModeButton: document.querySelector("#cropModeButton"),
+    activeToolPanel: document.querySelector("#activeToolPanel"),
+    activeToolName: document.querySelector("#activeToolName"),
+    activeToolDescription: document.querySelector("#activeToolDescription"),
     patchFillOptions: document.querySelector("#patchFillOptions"),
     blurOptions: document.querySelector("#blurOptions"),
     blurStyleButtons: [...document.querySelectorAll(".blur-style-button")],
@@ -234,6 +237,19 @@
     serif: { label: "Serif", family: 'Georgia, "Times New Roman", serif' },
     mono: { label: "Mono", family: '"SFMono-Regular", Consolas, "Liberation Mono", monospace' },
     hand: { label: "Hand", family: '"Marker Felt", "Bradley Hand", "Comic Sans MS", cursive' },
+  };
+
+  const TOOL_DETAILS = {
+    arrange: ["Arrange", "Move, resize, or reorder image layers."],
+    crop: ["Crop", "Drag over the part of the image you want to keep."],
+    mask: ["Mask", "Cover an area with a color or pattern."],
+    blur: ["Blur", "Obscure an area with Gaussian or pixel blur."],
+    text: ["Replace text", "Cover existing text and add a replacement label."],
+    smart: ["Smart text", "Find repeated text and edit every selected match."],
+    "canvas-text": ["Headline", "Add styled text anywhere on the share canvas."],
+    circle: ["Circle", "Draw a configurable highlight around an area."],
+    arrow: ["Arrow", "Point to a detail with a clean or hand-drawn arrow."],
+    line: ["Line", "Draw a clean or hand-drawn marker line."],
   };
 
   const IMAGE_DB_NAME = "patchwork-image-history";
@@ -1011,8 +1027,8 @@
         elements.layoutStatus.textContent = `${ratioLabel} adds background as needed; the image stays at 1:1 pixels.`;
       }
     } else {
-      elements.imageSizeReadout.textContent = "Waiting";
-      elements.exportSizeReadout.textContent = "Waiting";
+      elements.imageSizeReadout.textContent = "No image";
+      elements.exportSizeReadout.textContent = "—";
       elements.layoutStatus.textContent = "Load an image to preview the export canvas.";
     }
     updateFramePreview();
@@ -4157,6 +4173,10 @@
     elements.blurOptions.hidden = !isBlur;
     elements.annotationOptions.hidden = !isAnnotation;
     elements.canvasTextOptions.hidden = !isCanvasText;
+    const [toolName, toolDescription] = TOOL_DETAILS[mode];
+    elements.activeToolName.textContent = toolName;
+    elements.activeToolDescription.textContent = toolDescription;
+    elements.activeToolPanel.classList.toggle("has-settings", !["arrange", "crop"].includes(mode));
     elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
       ? `Drag the ${mode}, then move the diamond handle to bend it.`
       : "Drag a box around the area to circle.";
