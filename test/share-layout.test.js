@@ -125,6 +125,30 @@ test("landscape shape adds horizontal background around portrait content", () =>
   assert.deepEqual(layout.content, { x: 489, y: 0, width: 800, height: 1000, scale: 1 });
 });
 
+test("image position redistributes horizontal background for editorial layouts", () => {
+  const left = calculateShareLayout({
+    contentWidth: 540,
+    contentHeight: 740,
+    paddingX: 220,
+    paddingY: 120,
+    paddingUnit: "pixels",
+    aspectRatio: 1,
+    contentPosition: "left",
+  });
+  const right = calculateShareLayout({
+    contentWidth: 540,
+    contentHeight: 740,
+    paddingX: 220,
+    paddingY: 120,
+    paddingUnit: "pixels",
+    aspectRatio: 1,
+    contentPosition: "right",
+  });
+
+  assert.deepEqual(left.content, { x: 26, y: 120, width: 540, height: 740, scale: 1 });
+  assert.deepEqual(right.content, { x: 414, y: 120, width: 540, height: 740, scale: 1 });
+});
+
 test("reflection participates in the canvas shape without shrinking the image", () => {
   const layout = calculateShareLayout({
     contentWidth: 1000,

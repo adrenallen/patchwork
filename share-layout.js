@@ -49,6 +49,7 @@
     paddingY,
     paddingUnit = "percent",
     aspectRatio = null,
+    contentPosition = "center",
     reflection = false,
     maxDimension = DEFAULT_MAX_DIMENSION,
     maxPixels = DEFAULT_MAX_PIXELS,
@@ -88,7 +89,13 @@
     const height = content.height * scale;
     const reflectionHeight = reflection ? height * 0.22 : 0;
     const reflectionGap = desiredReflectionGap * scale;
-    const rawX = (dimensions.width - width) / 2;
+    const availableX = dimensions.width - width;
+    const edgeInset = availableX * 0.06;
+    const rawX = contentPosition === "left"
+      ? edgeInset
+      : contentPosition === "right"
+        ? availableX - edgeInset
+        : (dimensions.width - width) / 2;
     const rawY = (dimensions.height - height - reflectionHeight - reflectionGap) / 2;
     const snapToPixels = Math.abs(scale - Math.round(scale)) < 1e-9;
 

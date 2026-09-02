@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.2" />
+    <link rel="stylesheet" href="styles.css?v=20260901.3" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -351,6 +351,14 @@
                   </button>
                 </div>
                 <p class="layout-status" id="layoutStatus">Your image stays at its original resolution.</p>
+                <div class="content-position-row">
+                  <span>Image position</span>
+                  <div class="segmented-control content-position-control" role="group" aria-label="Image position on canvas">
+                    <button class="segment content-position-button" type="button" data-content-position="left" aria-pressed="false">Left</button>
+                    <button class="segment content-position-button is-active" type="button" data-content-position="center" aria-pressed="true">Center</button>
+                    <button class="segment content-position-button" type="button" data-content-position="right" aria-pressed="false">Right</button>
+                  </div>
+                </div>
                 <div class="padding-control-group" role="group" aria-labelledby="paddingLabel">
                   <div class="padding-control-heading">
                     <span class="padding-title" id="paddingLabel">Extra padding</span>
@@ -386,6 +394,92 @@
                 </div>
               </fieldset>
 
+              <fieldset class="control-group screenshot-edge-group" id="screenshotEdgeGroup">
+                <legend>Screenshot edge</legend>
+                <div class="effect-heading">
+                  <span class="edge-preview" id="edgePreview" aria-hidden="true"></span>
+                  <span><strong id="edgeLayerName">Top screenshot</strong><small>Outline and glow the selected image layer.</small></span>
+                </div>
+                <div class="segmented-control effect-style-control" role="group" aria-label="Screenshot edge style">
+                  <button class="segment edge-style-button is-active" type="button" data-edge-style="none" aria-pressed="true">None</button>
+                  <button class="segment edge-style-button" type="button" data-edge-style="solid" aria-pressed="false">Solid</button>
+                  <button class="segment edge-style-button" type="button" data-edge-style="gradient" aria-pressed="false">Gradient</button>
+                </div>
+                <div class="field-row edge-color-row" id="edgeColorRow" hidden>
+                  <label class="field-label" for="edgeColor">Edge color</label>
+                  <div class="color-control">
+                    <input id="edgeColor" type="color" value="#4f7cff" />
+                    <output id="edgeColorValue" for="edgeColor">#4F7CFF</output>
+                  </div>
+                </div>
+                <div class="effect-gradient-presets" id="edgeGradientPresets" role="group" aria-label="Screenshot edge gradient" hidden>
+                  <button class="effect-gradient-button gradient-tide is-active" type="button" data-edge-gradient="tide" aria-label="Tide gradient" aria-pressed="true"></button>
+                  <button class="effect-gradient-button gradient-iris" type="button" data-edge-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-dusk" type="button" data-edge-gradient="dusk" aria-label="Dusk gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-mango" type="button" data-edge-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-mint" type="button" data-edge-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
+                </div>
+                <label class="range-field effect-range" for="edgeWidth">
+                  <span class="range-heading"><span>Outline</span><output id="edgeWidthValue" for="edgeWidth">3 px</output></span>
+                  <input id="edgeWidth" type="range" min="1" max="16" step="1" value="3" />
+                </label>
+                <label class="range-field effect-range" for="edgeGlow">
+                  <span class="range-heading"><span>Glow</span><output id="edgeGlowValue" for="edgeGlow">18</output></span>
+                  <input id="edgeGlow" type="range" min="0" max="48" step="1" value="18" />
+                </label>
+              </fieldset>
+
+              <fieldset class="control-group canvas-text-group">
+                <legend>Canvas text</legend>
+                <p class="canvas-text-intro">Add movable headlines anywhere on the final canvas.</p>
+                <label class="stacked-field canvas-text-copy-field" for="canvasTextContent">
+                  <span>Text</span>
+                  <textarea id="canvasTextContent" rows="3" placeholder="Audit&#10;Process&#10;Records">Your headline</textarea>
+                </label>
+                <div class="segmented-control effect-style-control" role="group" aria-label="Canvas text color style">
+                  <button class="segment canvas-text-fill-button is-active" type="button" data-canvas-text-fill="solid" aria-pressed="true">Solid</button>
+                  <button class="segment canvas-text-fill-button" type="button" data-canvas-text-fill="gradient" aria-pressed="false">Gradient</button>
+                </div>
+                <div class="field-row" id="canvasTextColorRow">
+                  <label class="field-label" for="canvasTextColor">Text color</label>
+                  <div class="color-control">
+                    <input id="canvasTextColor" type="color" value="#ffffff" />
+                    <output id="canvasTextColorValue" for="canvasTextColor">#FFFFFF</output>
+                  </div>
+                </div>
+                <div class="effect-gradient-presets" id="canvasTextGradientPresets" role="group" aria-label="Canvas text gradient" hidden>
+                  <button class="effect-gradient-button gradient-tide is-active" type="button" data-canvas-text-gradient="tide" aria-label="Tide gradient" aria-pressed="true"></button>
+                  <button class="effect-gradient-button gradient-iris" type="button" data-canvas-text-gradient="iris" aria-label="Iris gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-dusk" type="button" data-canvas-text-gradient="dusk" aria-label="Dusk gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-mango" type="button" data-canvas-text-gradient="mango" aria-label="Mango gradient" aria-pressed="false"></button>
+                  <button class="effect-gradient-button gradient-mint" type="button" data-canvas-text-gradient="mint" aria-label="Mint gradient" aria-pressed="false"></button>
+                </div>
+                <div class="font-family-field canvas-text-font-field">
+                  <span class="field-label" id="canvasTextFontLabel">Font</span>
+                  <div class="segmented-control font-family-control" role="group" aria-labelledby="canvasTextFontLabel">
+                    <button class="segment canvas-text-font-button is-active" type="button" data-canvas-text-font="sans" aria-pressed="true"><span aria-hidden="true">Aa</span><small>Sans</small></button>
+                    <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="serif" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Serif</small></button>
+                    <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="mono" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Mono</small></button>
+                    <button class="segment canvas-text-font-button" type="button" data-canvas-text-font="hand" aria-pressed="false"><span aria-hidden="true">Aa</span><small>Hand</small></button>
+                  </div>
+                </div>
+                <div class="text-style-field canvas-text-style-field">
+                  <span class="field-label" id="canvasTextStyleLabel">Style</span>
+                  <div class="segmented-control text-style-control" role="group" aria-labelledby="canvasTextStyleLabel">
+                    <button class="segment canvas-text-style-button" type="button" data-canvas-text-style="normal" aria-pressed="false">Normal</button>
+                    <button class="segment canvas-text-style-button is-active" type="button" data-canvas-text-style="bold" aria-pressed="true">Bold</button>
+                    <button class="segment canvas-text-style-button" type="button" data-canvas-text-style="italic" aria-pressed="false">Italic</button>
+                  </div>
+                </div>
+                <label class="range-field effect-range" for="canvasTextSize">
+                  <span class="range-heading"><span>Font size</span><output id="canvasTextSizeValue" for="canvasTextSize">72 px</output></span>
+                  <input id="canvasTextSize" type="range" min="12" max="240" step="1" value="72" />
+                </label>
+                <button class="canvas-text-add-button" id="canvasTextAddButton" type="button">
+                  <span>Add text layer</span><span aria-hidden="true">＋</span>
+                </button>
+              </fieldset>
+
               <label class="range-field presentation-range" for="cornerRadius">
                 <span class="range-heading"><span>Image corners</span><output id="cornerRadiusValue" for="cornerRadius">24 px</output></span>
                 <input id="cornerRadius" type="range" min="0" max="64" step="2" value="24" />
@@ -398,13 +492,13 @@
             </div>
           </section>
 
-          <section class="layers-section" aria-label="Image layers">
+          <section class="layers-section" aria-label="Layers">
             <div class="section-heading layers-heading">
-              <span class="step-label">Image layers</span>
+              <span class="step-label">Layers</span>
               <button class="text-button" id="addLayerButton" type="button" disabled>Add image</button>
             </div>
             <div class="layers-list" id="layersList">
-              <p class="recent-empty" id="layersEmpty">Paste or add images to arrange them here.</p>
+              <p class="recent-empty" id="layersEmpty">Images and canvas text appear here.</p>
             </div>
           </section>
 
@@ -478,7 +572,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
-    <script src="share-layout.js?v=20260901.2"></script>
-    <script src="app.js?v=20260901.2"></script>
+    <script src="share-layout.js?v=20260901.3"></script>
+    <script src="app.js?v=20260901.3"></script>
   </body>
 </html>

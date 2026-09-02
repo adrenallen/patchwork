@@ -124,7 +124,33 @@
     imageSizeReadout: document.querySelector("#imageSizeReadout"),
     exportSizeReadout: document.querySelector("#exportSizeReadout"),
     layoutStatus: document.querySelector("#layoutStatus"),
+    contentPositionButtons: [...document.querySelectorAll(".content-position-button")],
     gradientButtons: [...document.querySelectorAll(".gradient-button")],
+    screenshotEdgeGroup: document.querySelector("#screenshotEdgeGroup"),
+    edgeLayerName: document.querySelector("#edgeLayerName"),
+    edgePreview: document.querySelector("#edgePreview"),
+    edgeStyleButtons: [...document.querySelectorAll(".edge-style-button")],
+    edgeColorRow: document.querySelector("#edgeColorRow"),
+    edgeColor: document.querySelector("#edgeColor"),
+    edgeColorValue: document.querySelector("#edgeColorValue"),
+    edgeGradientPresets: document.querySelector("#edgeGradientPresets"),
+    edgeGradientButtons: [...document.querySelectorAll("[data-edge-gradient]")],
+    edgeWidth: document.querySelector("#edgeWidth"),
+    edgeWidthValue: document.querySelector("#edgeWidthValue"),
+    edgeGlow: document.querySelector("#edgeGlow"),
+    edgeGlowValue: document.querySelector("#edgeGlowValue"),
+    canvasTextContent: document.querySelector("#canvasTextContent"),
+    canvasTextFillButtons: [...document.querySelectorAll(".canvas-text-fill-button")],
+    canvasTextColorRow: document.querySelector("#canvasTextColorRow"),
+    canvasTextColor: document.querySelector("#canvasTextColor"),
+    canvasTextColorValue: document.querySelector("#canvasTextColorValue"),
+    canvasTextGradientPresets: document.querySelector("#canvasTextGradientPresets"),
+    canvasTextGradientButtons: [...document.querySelectorAll("[data-canvas-text-gradient]")],
+    canvasTextFontButtons: [...document.querySelectorAll(".canvas-text-font-button")],
+    canvasTextStyleButtons: [...document.querySelectorAll(".canvas-text-style-button")],
+    canvasTextSize: document.querySelector("#canvasTextSize"),
+    canvasTextSizeValue: document.querySelector("#canvasTextSizeValue"),
+    canvasTextAddButton: document.querySelector("#canvasTextAddButton"),
     paddingUnitButtons: [...document.querySelectorAll(".padding-unit-button")],
     framePaddingX: document.querySelector("#framePaddingX"),
     framePaddingY: document.querySelector("#framePaddingY"),
@@ -172,6 +198,9 @@
     smartTextBlurStrength: "patchwork.smartTextBlurStrength",
     smartTextMaskColor: "patchwork.smartTextMaskColor",
     smartTextMaskPattern: "patchwork.smartTextMaskPattern",
+    canvasTextSettings: "patchwork.canvasTextSettings",
+    screenshotEdgeSettings: "patchwork.screenshotEdgeSettings",
+    contentPosition: "patchwork.contentPosition",
   };
 
   const GRADIENTS = {
@@ -236,7 +265,19 @@
   let aspectPreset = "image";
   let gradientName = "dusk";
   let paddingUnit = "percent";
+  let contentPosition = "center";
   let reflectionEnabled = false;
+  let canvasTextFill = "solid";
+  let canvasTextGradient = "tide";
+  let canvasTextFont = "sans";
+  let canvasTextStyle = "bold";
+  let screenshotEdgeDefaults = {
+    edgeStyle: "none",
+    edgeColor: "#4f7cff",
+    edgeGradient: "tide",
+    edgeWidth: 3,
+    edgeGlow: 18,
+  };
   let blurStyle = "gaussian";
   let blurStrength = 14;
   let toolSettings = {};
@@ -332,6 +373,10 @@
 
   function activeImageLayer() {
     return imageLayers.find((layer) => layer.id === activeImageLayerId) || null;
+  }
+
+  function edgeTargetLayer() {
+    return activeImageLayer() || [...imageLayers].reverse().find((layer) => layer.visible !== false) || null;
   }
 
   function openImageDatabase() {
@@ -590,6 +635,8 @@
     reflectionEnabled = readPreference(STORAGE_KEYS.reflectionEnabled, "false") === "true";
     const savedAspectPreset = readPreference(STORAGE_KEYS.aspectPreset, "image");
     aspectPreset = Object.hasOwn(ASPECT_RATIOS, savedAspectPreset) ? savedAspectPreset : "image";
+    const savedContentPosition = readPreference(STORAGE_KEYS.contentPosition, "center");
+    contentPosition = ["left", "center", "right"].includes(savedContentPosition) ? savedContentPosition : "center";
     gradientName = readPreference(STORAGE_KEYS.gradient, "dusk");
     if (gradientName !== "transparent" && !GRADIENTS[gradientName]) gradientName = "dusk";
     elements.frameEnabled.checked = frameEnabled;
@@ -615,6 +662,30 @@
       paddingPrecision,
     ));
     elements.cornerRadius.value = String(clampNumber(readPreference(STORAGE_KEYS.cornerRadius, "24"), 0, 64, 24));
+    try {
+      const savedCanvasText = JSON.parse(readPreference(STORAGE_KEYS.canvasTextSettings, "{}"));
+      canvasTextFill = ["solid", "gradient"].includes(savedCanvasText.fill) ? savedCanvasText.fill : "solid";
+      canvasTextGradient = GRADIENTS[savedCanvasText.gradient] ? savedCanvasText.gradient : "tide";
+      canvasTextFont = TEXT_FONTS[savedCanvasText.font] ? savedCanvasText.font : "sans";
+      canvasTextStyle = ["normal", "bold", "italic"].includes(savedCanvasText.style) ? savedCanvasText.style : "bold";
+      elements.canvasTextContent.value = savedCanvasText.text || "Your headline";
+      elements.canvasTextColor.value = savedCanvasText.color || "#ffffff";
+      elements.canvasTextSize.value = String(clampNumber(savedCanvasText.size, 12, 240, 72));
+    } catch {
+      // Keep the visible canvas text defaults.
+    }
+    try {
+      const savedEdge = JSON.parse(readPreference(STORAGE_KEYS.screenshotEdgeSettings, "{}"));
+      screenshotEdgeDefaults = {
+        edgeStyle: ["none", "solid", "gradient"].includes(savedEdge.edgeStyle) ? savedEdge.edgeStyle : "none",
+        edgeColor: savedEdge.edgeColor || "#4f7cff",
+        edgeGradient: GRADIENTS[savedEdge.edgeGradient] ? savedEdge.edgeGradient : "tide",
+        edgeWidth: clampNumber(savedEdge.edgeWidth, 1, 16, 3),
+        edgeGlow: clampNumber(savedEdge.edgeGlow, 0, 48, 18),
+      };
+    } catch {
+      // Keep the visible screenshot edge defaults.
+    }
     const savedSmartFont = readPreference(STORAGE_KEYS.smartTextFont, "auto");
     const savedSmartWeight = readPreference(STORAGE_KEYS.smartTextWeight, "auto");
     smartTextFont = ["auto", ...Object.keys(TEXT_FONTS)].includes(savedSmartFont) ? savedSmartFont : "auto";
@@ -635,6 +706,8 @@
     elements.smartTextBlurStrength.value = String(smartTextBlurStrength);
     elements.smartTextMaskColor.value = readPreference(STORAGE_KEYS.smartTextMaskColor, legacyBackground);
     updateSmartTextOptionUI();
+    updateCanvasTextControls();
+    updateScreenshotEdgeControls();
     updatePresentationUI();
     loadRecentPatches();
     updatePreferenceLabels();
@@ -766,6 +839,7 @@
       paddingY: padding.y,
       paddingUnit,
       aspectRatio: ASPECT_RATIOS[aspectPreset],
+      contentPosition,
       reflection: reflectionEnabled,
     });
   }
@@ -838,8 +912,8 @@
       suffix.textContent = settings.suffix;
     });
     elements.paddingNote.textContent = paddingUnit === "pixels"
-      ? "Minimum pixels per side. The selected shape may add more."
-      : "Percent of image size per side. The selected shape may add more.";
+      ? "Pixels build the canvas; Image position redistributes horizontal space."
+      : "Percent builds the canvas; Image position redistributes horizontal space.";
   }
 
   function normalizePaddingInputs({ update = true } = {}) {
@@ -889,11 +963,18 @@
     elements.reflectionEnabled.checked = reflectionEnabled;
     elements.frameToggleLabel.textContent = frameEnabled ? "On" : "Off";
     elements.presentationControls.hidden = !frameEnabled;
+    updateCanvasTextControls();
+    updateScreenshotEdgeControls();
     updatePaddingControlUI();
     elements.cornerRadiusValue.value = `${elements.cornerRadius.value} px`;
 
     elements.ratioButtons.forEach((button) => {
       const isActive = button.dataset.aspect === aspectPreset;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    elements.contentPositionButtons.forEach((button) => {
+      const isActive = button.dataset.contentPosition === contentPosition;
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
@@ -909,6 +990,8 @@
       elements.exportSizeReadout.textContent = `${layout.dimensions.width} × ${layout.dimensions.height}`;
       if (layout.constrained) {
         elements.layoutStatus.textContent = "Export reduced to stay within browser canvas limits.";
+      } else if (contentPosition !== "center") {
+        elements.layoutStatus.textContent = `Image shifted ${contentPosition} to open a text column; resolution stays 1:1.`;
       } else if (aspectPreset === "image") {
         elements.layoutStatus.textContent = "Extra padding sets the canvas; the image stays at 1:1 pixels.";
       } else {
@@ -931,10 +1014,219 @@
     updatePresentationUI();
   }
 
+  function setContentPosition(position) {
+    contentPosition = ["left", "right"].includes(position) ? position : "center";
+    savePreference(STORAGE_KEYS.contentPosition, contentPosition);
+    scheduleCurrentImageSave();
+    updatePresentationUI();
+  }
+
   function setGradient(name) {
     gradientName = (name === "transparent" || GRADIENTS[name]) ? name : "dusk";
     savePreference(STORAGE_KEYS.gradient, gradientName);
     updatePresentationUI();
+  }
+
+  function saveCanvasTextPreferences() {
+    savePreference(STORAGE_KEYS.canvasTextSettings, JSON.stringify({
+      text: elements.canvasTextContent.value,
+      fill: canvasTextFill,
+      color: elements.canvasTextColor.value,
+      gradient: canvasTextGradient,
+      font: canvasTextFont,
+      style: canvasTextStyle,
+      size: Number(elements.canvasTextSize.value),
+    }));
+  }
+
+  function updateCanvasTextControls() {
+    elements.canvasTextFillButtons.forEach((button) => {
+      const active = button.dataset.canvasTextFill === canvasTextFill;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.canvasTextColorRow.hidden = canvasTextFill !== "solid";
+    elements.canvasTextGradientPresets.hidden = canvasTextFill !== "gradient";
+    elements.canvasTextGradientButtons.forEach((button) => {
+      const active = button.dataset.canvasTextGradient === canvasTextGradient;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.canvasTextFontButtons.forEach((button) => {
+      const active = button.dataset.canvasTextFont === canvasTextFont;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.canvasTextStyleButtons.forEach((button) => {
+      const active = button.dataset.canvasTextStyle === canvasTextStyle;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.canvasTextColorValue.value = elements.canvasTextColor.value.toUpperCase();
+    elements.canvasTextSizeValue.value = `${elements.canvasTextSize.value} px`;
+    elements.canvasTextAddButton.disabled = !imageLoaded || !frameEnabled || !elements.canvasTextContent.value.trim();
+    saveCanvasTextPreferences();
+  }
+
+  function loadCanvasTextObjectIntoControls(object) {
+    if (!object || object.mode !== "canvas-text") return;
+    elements.canvasTextContent.value = object.text || "";
+    canvasTextFill = object.fillMode === "gradient" ? "gradient" : "solid";
+    elements.canvasTextColor.value = object.textColor || "#ffffff";
+    canvasTextGradient = GRADIENTS[object.gradientName] ? object.gradientName : "tide";
+    canvasTextFont = TEXT_FONTS[object.textFont] ? object.textFont : "sans";
+    canvasTextStyle = ["normal", "bold", "italic"].includes(object.textStyle) ? object.textStyle : "bold";
+    elements.canvasTextSize.value = String(clampNumber(object.fontSize, 12, 240, 72));
+    updateCanvasTextControls();
+  }
+
+  function syncCanvasTextObjectFromControls() {
+    const object = activeObject();
+    saveCanvasTextPreferences();
+    if (!object || object.mode !== "canvas-text") {
+      updateCanvasTextControls();
+      return;
+    }
+    if (!pendingSettingsHistory) pendingSettingsHistory = snapshot();
+    object.text = elements.canvasTextContent.value;
+    object.fillMode = canvasTextFill;
+    object.textColor = elements.canvasTextColor.value;
+    object.gradientName = canvasTextGradient;
+    object.textFont = canvasTextFont;
+    object.textStyle = canvasTextStyle;
+    object.fontSize = clampNumber(elements.canvasTextSize.value, 12, 240, 72);
+    updateCanvasTextControls();
+    syncSelectionFromActiveObject();
+    renderLayers();
+    render();
+    scheduleCurrentImageSave();
+    window.clearTimeout(settingsHistoryTimer);
+    settingsHistoryTimer = window.setTimeout(commitPendingSettingsHistory, 450);
+  }
+
+  function createCanvasTextLayer() {
+    const text = elements.canvasTextContent.value.trim();
+    if (!imageLoaded || !frameEnabled || !text) return;
+    commitPendingSettingsHistory();
+    rememberHistoryStep();
+    const layout = getShareLayout();
+    const dimensions = layout.dimensions;
+    const fontSize = clampNumber(elements.canvasTextSize.value, 12, 240, 72);
+    const lineCount = Math.max(1, text.split("\n").length);
+    const leftSpace = layout.content.x;
+    const rightSpace = dimensions.width - layout.content.x - layout.content.width;
+    const useLeftSpace = leftSpace >= rightSpace;
+    const sideSpace = Math.max(leftSpace, rightSpace);
+    const sideMargin = Math.max(12, Math.min(32, dimensions.width * 0.035));
+    const hasTextColumn = sideSpace >= Math.max(120, fontSize * 2.5);
+    const width = hasTextColumn
+      ? Math.max(80, sideSpace - sideMargin * 2)
+      : Math.max(80, Math.min(dimensions.width * 0.42, fontSize * 10));
+    const height = Math.max(fontSize * 1.25, Math.min(dimensions.height * 0.56, fontSize * lineCount * 1.12));
+    const object = {
+      id: createObjectId(),
+      mode: "canvas-text",
+      space: "share",
+      x: hasTextColumn
+        ? (useLeftSpace ? sideMargin : layout.content.x + layout.content.width + sideMargin)
+        : Math.max(12, dimensions.width * 0.055),
+      y: Math.max(12, dimensions.height * 0.24),
+      width,
+      height,
+      rotation: 0,
+      text,
+      fillMode: canvasTextFill,
+      textColor: elements.canvasTextColor.value,
+      gradientName: canvasTextGradient,
+      textFont: canvasTextFont,
+      textStyle: canvasTextStyle,
+      fontSize,
+      lineHeight: 1.04,
+      scaleTextOnResize: true,
+    };
+    placedObjects.push(object);
+    selectOnlyObject(object);
+    activeImageLayerId = null;
+    syncSelectionFromActiveObject();
+    setMode("canvas-text", { preserveActive: true, loadSettings: false });
+    renderLayers();
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+    showToast("Canvas text added. Drag it anywhere on the export.");
+    canvas.focus({ preventScroll: true });
+  }
+
+  function edgeSettingsFor(layer = edgeTargetLayer()) {
+    return {
+      edgeStyle: ["none", "solid", "gradient"].includes(layer?.edgeStyle)
+        ? layer.edgeStyle
+        : screenshotEdgeDefaults.edgeStyle,
+      edgeColor: layer?.edgeColor || screenshotEdgeDefaults.edgeColor,
+      edgeGradient: GRADIENTS[layer?.edgeGradient] ? layer.edgeGradient : screenshotEdgeDefaults.edgeGradient,
+      edgeWidth: clampNumber(layer?.edgeWidth, 1, 16, screenshotEdgeDefaults.edgeWidth),
+      edgeGlow: clampNumber(layer?.edgeGlow, 0, 48, screenshotEdgeDefaults.edgeGlow),
+    };
+  }
+
+  function updateScreenshotEdgeControls() {
+    const layer = edgeTargetLayer();
+    const settings = edgeSettingsFor(layer);
+    elements.screenshotEdgeGroup.disabled = !layer;
+    elements.edgeLayerName.textContent = layer?.name || "No screenshot selected";
+    elements.edgeColor.value = settings.edgeColor;
+    elements.edgeColorValue.value = settings.edgeColor.toUpperCase();
+    elements.edgeWidth.value = String(settings.edgeWidth);
+    elements.edgeWidthValue.value = `${settings.edgeWidth} px`;
+    elements.edgeGlow.value = String(settings.edgeGlow);
+    elements.edgeGlowValue.value = String(settings.edgeGlow);
+    elements.edgeColorRow.hidden = settings.edgeStyle !== "solid";
+    elements.edgeGradientPresets.hidden = settings.edgeStyle !== "gradient";
+    elements.edgeStyleButtons.forEach((button) => {
+      const active = button.dataset.edgeStyle === settings.edgeStyle;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.edgeGradientButtons.forEach((button) => {
+      const active = button.dataset.edgeGradient === settings.edgeGradient;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    const previewColor = settings.edgeStyle === "gradient"
+      ? gradientCss(settings.edgeGradient)
+      : settings.edgeColor;
+    elements.edgePreview.classList.toggle("is-off", settings.edgeStyle === "none");
+    elements.edgePreview.style.setProperty("--edge-color", previewColor);
+    elements.edgePreview.style.setProperty(
+      "--edge-glow-color",
+      settings.edgeStyle === "gradient"
+        ? `${(GRADIENTS[settings.edgeGradient] || GRADIENTS.tide).stops[1]}c2`
+        : `${settings.edgeColor}c2`,
+    );
+    elements.edgePreview.style.setProperty("--edge-width", `${Math.max(1, Math.min(5, settings.edgeWidth / 2))}px`);
+    elements.edgePreview.style.setProperty("--edge-glow", `${Math.min(24, settings.edgeGlow)}px`);
+  }
+
+  function syncScreenshotEdgeFromControls(overrides = {}) {
+    const layer = edgeTargetLayer();
+    if (!layer) return;
+    if (!pendingSettingsHistory) pendingSettingsHistory = snapshot();
+    const settings = {
+      ...edgeSettingsFor(layer),
+      edgeColor: elements.edgeColor.value,
+      edgeWidth: clampNumber(elements.edgeWidth.value, 1, 16, 3),
+      edgeGlow: clampNumber(elements.edgeGlow.value, 0, 48, 18),
+      ...overrides,
+    };
+    Object.assign(layer, settings);
+    screenshotEdgeDefaults = { ...settings };
+    savePreference(STORAGE_KEYS.screenshotEdgeSettings, JSON.stringify(screenshotEdgeDefaults));
+    updateScreenshotEdgeControls();
+    renderLayers();
+    render();
+    scheduleCurrentImageSave();
+    window.clearTimeout(settingsHistoryTimer);
+    settingsHistoryTimer = window.setTimeout(commitPendingSettingsHistory, 450);
   }
 
   function setSmartTextStatus(message, { progress = null, visible = true } = {}) {
@@ -1969,6 +2261,13 @@
       width: Number.isFinite(placement.width) ? placement.width : image.naturalWidth,
       height: Number.isFinite(placement.height) ? placement.height : image.naturalHeight,
       visible: placement.visible !== false,
+      edgeStyle: ["none", "solid", "gradient"].includes(placement.edgeStyle)
+        ? placement.edgeStyle
+        : screenshotEdgeDefaults.edgeStyle,
+      edgeColor: placement.edgeColor || screenshotEdgeDefaults.edgeColor,
+      edgeGradient: GRADIENTS[placement.edgeGradient] ? placement.edgeGradient : screenshotEdgeDefaults.edgeGradient,
+      edgeWidth: clampNumber(placement.edgeWidth, 1, 16, screenshotEdgeDefaults.edgeWidth),
+      edgeGlow: clampNumber(placement.edgeGlow, 0, 48, screenshotEdgeDefaults.edgeGlow),
     };
   }
 
@@ -2006,6 +2305,7 @@
     elements.editControls.setAttribute("aria-disabled", "false");
     elements.newCanvasButton.disabled = false;
     elements.addLayerButton.disabled = false;
+    elements.canvasTextAddButton.disabled = !frameEnabled || !elements.canvasTextContent.value.trim();
     elements.copyButton.disabled = false;
     elements.downloadButton.disabled = false;
     elements.workspaceTip.textContent = "Drag to place · click an item to edit";
@@ -2062,6 +2362,7 @@
     canvas.removeAttribute("tabindex");
     elements.editControls.setAttribute("aria-disabled", "true");
     elements.addLayerButton.disabled = true;
+    elements.canvasTextAddButton.disabled = true;
     elements.copyButton.disabled = true;
     elements.downloadButton.disabled = true;
     elements.imageMeta.textContent = "No image loaded";
@@ -2241,6 +2542,7 @@
     arrowEnd = null;
     setMode("arrange", { preserveLayer: true });
     renderLayers();
+    updateScreenshotEdgeControls();
     updateControls();
     render();
     canvas.focus({ preventScroll: true });
@@ -2279,8 +2581,9 @@
   }
 
   function renderLayers() {
-    elements.layersList.querySelectorAll(".image-layer-row").forEach((row) => row.remove());
-    elements.layersEmpty.hidden = imageLayers.length > 0;
+    elements.layersList.querySelectorAll(".image-layer-row, .canvas-text-layer-row").forEach((row) => row.remove());
+    const canvasTextLayers = placedObjects.filter((object) => object.mode === "canvas-text");
+    elements.layersEmpty.hidden = imageLayers.length > 0 || canvasTextLayers.length > 0;
     [...imageLayers].reverse().forEach((layer) => {
       const sourceIndex = imageLayers.findIndex((item) => item.id === layer.id);
       const row = document.createElement("div");
@@ -2334,17 +2637,61 @@
       row.append(select, actions);
       elements.layersList.append(row);
     });
+
+    [...canvasTextLayers].reverse().forEach((object) => {
+      const row = document.createElement("div");
+      row.className = "canvas-text-layer-row";
+      row.classList.toggle("is-active", object.id === activeObjectId);
+
+      const select = document.createElement("button");
+      select.type = "button";
+      select.className = "image-layer-select";
+      select.setAttribute("aria-label", `Select canvas text ${object.text || "Untitled"}`);
+      const thumbnail = document.createElement("span");
+      thumbnail.className = "canvas-text-layer-thumb";
+      thumbnail.classList.toggle("is-gradient", object.fillMode === "gradient");
+      thumbnail.textContent = "Aa";
+      const copy = document.createElement("span");
+      copy.className = "image-layer-copy";
+      const title = document.createElement("strong");
+      title.textContent = object.text?.split("\n").find(Boolean) || "Canvas text";
+      const detail = document.createElement("small");
+      detail.textContent = `${object.fillMode === "gradient" ? "Gradient" : "Solid"} · ${Math.round(object.fontSize || 72)} px`;
+      copy.append(title, detail);
+      select.append(thumbnail, copy);
+      select.addEventListener("click", () => selectPlacedObject(object));
+
+      const actions = document.createElement("span");
+      actions.className = "layer-actions";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "layer-action";
+      remove.textContent = "×";
+      remove.title = "Remove text layer";
+      remove.addEventListener("click", () => {
+        selectOnlyObject(object);
+        deleteActiveObject();
+        renderLayers();
+      });
+      actions.append(remove);
+      row.append(select, actions);
+      elements.layersList.append(row);
+    });
   }
 
-  function canvasPoint(event) {
+  function canvasOutputPoint(event) {
     const bounds = canvas.getBoundingClientRect();
     const scaleX = canvas.width / bounds.width;
     const scaleY = canvas.height / bounds.height;
-    const point = {
+    return {
       x: Math.max(0, Math.min(canvas.width, (event.clientX - bounds.left) * scaleX)),
       y: Math.max(0, Math.min(canvas.height, (event.clientY - bounds.top) * scaleY)),
     };
-    return frameEnabled && mode !== "arrange" ? documentPointFromShare(point) : point;
+  }
+
+  function canvasPoint(event) {
+    const point = canvasOutputPoint(event);
+    return frameEnabled && !["arrange", "canvas-text"].includes(mode) ? documentPointFromShare(point) : point;
   }
 
   function normalizeBox(start, end) {
@@ -2358,13 +2705,13 @@
 
   function viewHitTolerance() {
     const outputTolerance = Math.max(4, 10 * canvas.width / Math.max(canvas.getBoundingClientRect().width, 1));
-    if (frameEnabled && mode !== "arrange") return outputTolerance / shareContentTransform().scale;
+    if (frameEnabled && !["arrange", "canvas-text"].includes(mode)) return outputTolerance / shareContentTransform().scale;
     return outputTolerance;
   }
 
   function toolDisplayScale() {
     const outputScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
-    return frameEnabled && mode !== "arrange" ? outputScale / shareContentTransform().scale : outputScale;
+    return frameEnabled && !["arrange", "canvas-text"].includes(mode) ? outputScale / shareContentTransform().scale : outputScale;
   }
 
   function distanceBetween(left, right) {
@@ -2445,9 +2792,12 @@
       && localPoint.y >= bounds.y && localPoint.y <= bounds.y + bounds.height;
   }
 
-  function findObjectAtPoint(point) {
+  function findObjectAtPoint(point, requestedSpace = null) {
+    const shareSpace = requestedSpace === "share" || (!requestedSpace && frameEnabled && mode === "canvas-text");
     for (let index = placedObjects.length - 1; index >= 0; index -= 1) {
-      if (objectContainsPoint(placedObjects[index], point)) return placedObjects[index];
+      const object = placedObjects[index];
+      if ((object.mode === "canvas-text") !== shareSpace) continue;
+      if (objectContainsPoint(object, point)) return object;
     }
     return null;
   }
@@ -2650,6 +3000,9 @@
   }
 
   function boxForResize(original, handle, point) {
+    const limits = original.mode === "canvas-text"
+      ? getOutputDimensions()
+      : { width: documentWidth(), height: documentHeight() };
     const opposite = {
       nw: { x: original.x + original.width, y: original.y + original.height },
       ne: { x: original.x, y: original.y + original.height },
@@ -2657,8 +3010,8 @@
       sw: { x: original.x + original.width, y: original.y },
     }[handle];
     const constrained = {
-      x: Math.max(0, Math.min(documentWidth(), point.x)),
-      y: Math.max(0, Math.min(documentHeight(), point.y)),
+      x: Math.max(0, Math.min(limits.width, point.x)),
+      y: Math.max(0, Math.min(limits.height, point.y)),
     };
     const box = normalizeBox(opposite, constrained);
     if (box.width < 4) {
@@ -2700,10 +3053,13 @@
 
     if (objectInteraction.kind === "move") {
       const bounds = objectBounds(original);
+      const limits = original.mode === "canvas-text"
+        ? getOutputDimensions()
+        : { width: documentWidth(), height: documentHeight() };
       const requestedX = point.x - objectInteraction.startPoint.x;
       const requestedY = point.y - objectInteraction.startPoint.y;
-      const deltaX = Math.max(-bounds.x, Math.min(documentWidth() - bounds.x - bounds.width, requestedX));
-      const deltaY = Math.max(-bounds.y, Math.min(documentHeight() - bounds.y - bounds.height, requestedY));
+      const deltaX = Math.max(-bounds.x, Math.min(limits.width - bounds.x - bounds.width, requestedX));
+      const deltaY = Math.max(-bounds.y, Math.min(limits.height - bounds.y - bounds.height, requestedY));
       updated = translatedObject(original, deltaX, deltaY);
     } else if (objectInteraction.kind === "rotate") {
       const center = rectangularObjectCenter(original);
@@ -2729,7 +3085,7 @@
         ? rotatedBoxForResize(original, objectInteraction.handle, point)
         : boxForResize(original, objectInteraction.handle, point);
       Object.assign(updated, resizedBox);
-      if (original.mode === "text" && original.scaleTextOnResize) {
+      if (["text", "canvas-text"].includes(original.mode) && original.scaleTextOnResize) {
         updated.fontSize = Math.max(0.5, original.fontSize * resizedBox.height / Math.max(1, original.height));
       }
     }
@@ -2786,6 +3142,8 @@
       if (history.length > 12) history.shift();
       future = [];
       rebuildBaseCanvas();
+      if (activeObject()?.mode === "canvas-text") loadCanvasTextObjectIntoControls(activeObject());
+      renderLayers();
       scheduleCurrentImageSave();
     }
     objectInteraction = null;
@@ -3354,6 +3712,10 @@
   }
 
   function drawPlacedObject(targetContext, object) {
+    if (object.mode === "canvas-text") {
+      drawCanvasTextObject(targetContext, object);
+      return;
+    }
     if (object.mode === "blur") {
       drawBlurRegion(targetContext, object);
       return;
@@ -3435,7 +3797,9 @@
     if (baseCanvas.height !== sourceCanvas.height) baseCanvas.height = sourceCanvas.height;
     baseContext.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
     baseContext.drawImage(sourceCanvas, 0, 0);
-    placedObjects.forEach((object) => drawPlacedObject(baseContext, object));
+    placedObjects
+      .filter((object) => object.mode !== "canvas-text")
+      .forEach((object) => drawPlacedObject(baseContext, object));
     documentRevision += 1;
   }
 
@@ -3564,6 +3928,10 @@
 
   function drawShareEditorOverlay(targetContext) {
     const selectedObject = activeObject();
+    if (selectedObject?.mode === "canvas-text") {
+      selectedObjects().forEach((object) => drawObjectSelection(targetContext, object));
+      return;
+    }
     if (mode === "arrange" && activeImageLayer()) {
       drawSelectionOutline(targetContext, imageLayerBounds(activeImageLayer()));
       return;
@@ -3601,7 +3969,12 @@
     const layout = getShareLayout();
     const surface = prepareShareContentSurface(layout.content);
     drawCombinedShareReflection(targetContext, layout.content, surface, layout.reflection);
+    drawScreenshotEdges(targetContext, "glow");
     drawShareEditableCanvas(targetContext, layout.content, surface);
+    drawScreenshotEdges(targetContext, "outline");
+    placedObjects
+      .filter((object) => object.mode === "canvas-text")
+      .forEach((object) => drawCanvasTextObject(targetContext, object));
     if (includeEditorOverlay) drawShareEditorOverlay(targetContext);
   }
 
@@ -3613,10 +3986,12 @@
     }
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(sourceCanvas, 0, 0);
-    placedObjects.forEach((object) => drawPlacedObject(context, object));
+    placedObjects
+      .filter((object) => object.mode !== "canvas-text")
+      .forEach((object) => drawPlacedObject(context, object));
     const selectedObject = activeObject();
     if (mode === "smart") drawSmartTextPreview(context);
-    else if (selectedObject) selectedObjects().forEach((object) => drawObjectSelection(context, object));
+    else if (selectedObject?.mode !== "canvas-text") selectedObjects().forEach((object) => drawObjectSelection(context, object));
     else if (mode === "arrange" && activeImageLayer()) drawSelectionOutline(context);
     else drawCurrentTool(context, true);
   }
@@ -3627,8 +4002,8 @@
     const selectedCount = selectedObjects().length;
     const hasAreaSelection = Boolean(selection && selection.width >= 2 && selection.height >= 2);
     const hasToolSelection = ["arrow", "line"].includes(mode) ? arrowLength() >= 2 : hasAreaSelection;
-    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop", "smart"].includes(mode);
-    elements.applyButton.hidden = ["arrange", "crop", "smart"].includes(mode);
+    elements.applyButton.disabled = !imageLoaded || !hasToolSelection || Boolean(selectedObject) || ["arrange", "crop", "smart", "canvas-text"].includes(mode);
+    elements.applyButton.hidden = ["arrange", "crop", "smart", "canvas-text"].includes(mode);
     elements.analyzeTextButton.disabled = !imageLoaded || smartTextAnalyzing;
     elements.clearSelectionButton.disabled = !selection;
     elements.undoButton.disabled = history.length === 0 || isRestoring;
@@ -3644,6 +4019,7 @@
       arrange: "Arrange image",
       crop: "Crop image",
       smart: "Analyze text",
+      "canvas-text": "Canvas text selected",
     }[mode];
     updateFontSizeUI();
 
@@ -3657,6 +4033,8 @@
       elements.selectionReadout.textContent = imageLoaded
         ? mode === "arrange"
           ? "Select an image"
+          : mode === "canvas-text"
+            ? "Select canvas text"
           : mode === "crop"
             ? "Drag crop area"
             : mode === "smart"
@@ -3683,7 +4061,7 @@
       activeImageLayerId = null;
       if (!activeObjectId) selection = null;
     }
-    mode = ["arrange", "mask", "blur", "text", "smart", "circle", "arrow", "line", "crop"].includes(nextMode) ? nextMode : "mask";
+    mode = ["arrange", "mask", "blur", "text", "smart", "circle", "arrow", "line", "crop", "canvas-text"].includes(nextMode) ? nextMode : "mask";
     const isText = mode === "text";
     const isSmartText = mode === "smart";
     const isAnnotation = ["circle", "arrow", "line"].includes(mode);
@@ -3722,6 +4100,8 @@
         ? "Click an image · drag to move · corners resize"
         : mode === "crop"
           ? "Drag a box to crop immediately"
+          : mode === "canvas-text"
+            ? "Drag text to move · corners resize · top handle rotates"
           : mode === "smart"
             ? "Analyze text · search phrases · preview every match"
           : "Drag to place · click an item to edit";
@@ -3733,6 +4113,12 @@
 
   function selectPlacedObject(object, { additive = false } = {}) {
     commitPendingSettingsHistory();
+    if (object.mode === "canvas-text" && !frameEnabled) {
+      frameEnabled = true;
+      elements.frameEnabled.checked = true;
+      savePreference(STORAGE_KEYS.frameEnabled, "true");
+      updatePresentationUI();
+    }
     const canAdd = additive && object.mode === "text" && selectedObjects().every((selected) => selected.mode === "text");
     if (canAdd) {
       if (selectedObjectIds.has(object.id)) selectedObjectIds.delete(object.id);
@@ -3752,6 +4138,13 @@
     syncSelectionFromActiveObject();
     activeImageLayerId = null;
     setMode(object.mode, { preserveActive: true, loadSettings: false });
+    if (object.mode === "canvas-text") {
+      loadCanvasTextObjectIntoControls(object);
+      renderLayers();
+      updateControls();
+      render();
+      return;
+    }
     elements.backgroundColor.value = object.backgroundColor || "#111827";
     elements.textColor.value = object.textColor || "#ffffff";
     elements.fontSize.value = String(object.fontSize || 28);
@@ -4000,11 +4393,13 @@
     imageLayers = imageLayers.map((layer) => ({ ...layer, x: layer.x - left, y: layer.y - top }));
     placedObjects = placedObjects
       .filter((object) => {
+        if (object.mode === "canvas-text") return true;
         const bounds = objectBounds(object);
         return bounds.x + bounds.width >= left && bounds.y + bounds.height >= top && bounds.x <= right && bounds.y <= bottom;
       })
       .map((object) => {
         const translated = { ...object };
+        if (translated.mode === "canvas-text") return translated;
         if (["arrow", "line"].includes(translated.mode)) {
           translated.startX -= left;
           translated.startY -= top;
@@ -4082,6 +4477,7 @@
     arrowStart = null;
     arrowEnd = null;
     rebuildBaseCanvas();
+    renderLayers();
     updateControls();
     render();
     scheduleCurrentImageSave();
@@ -4090,13 +4486,18 @@
   }
 
   function fillGradient(targetContext, width, height) {
-    const definition = GRADIENTS[gradientName] || GRADIENTS.dusk;
+    targetContext.fillStyle = linearGradientForBounds(targetContext, gradientName, { x: 0, y: 0, width, height });
+    targetContext.fillRect(0, 0, width, height);
+  }
+
+  function linearGradientForBounds(targetContext, name, bounds) {
+    const definition = GRADIENTS[name] || GRADIENTS.dusk;
     const radians = ((definition.angle - 90) * Math.PI) / 180;
     const directionX = Math.cos(radians);
     const directionY = Math.sin(radians);
-    const length = Math.abs(width * directionX) + Math.abs(height * directionY);
-    const centerX = width / 2;
-    const centerY = height / 2;
+    const length = Math.abs(bounds.width * directionX) + Math.abs(bounds.height * directionY);
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
     const gradient = targetContext.createLinearGradient(
       centerX - (directionX * length) / 2,
       centerY - (directionY * length) / 2,
@@ -4106,8 +4507,94 @@
     definition.stops.forEach((color, index) => {
       gradient.addColorStop(index / Math.max(1, definition.stops.length - 1), color);
     });
-    targetContext.fillStyle = gradient;
-    targetContext.fillRect(0, 0, width, height);
+    return gradient;
+  }
+
+  function wrapCanvasTextLines(targetContext, text, maximumWidth) {
+    const lines = [];
+    String(text || "").split("\n").forEach((paragraph) => {
+      if (!paragraph) {
+        lines.push("");
+        return;
+      }
+      const words = paragraph.split(/\s+/);
+      let line = "";
+      words.forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word;
+        if (line && targetContext.measureText(candidate).width > maximumWidth) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      });
+      lines.push(line);
+    });
+    return lines;
+  }
+
+  function drawCanvasTextObject(targetContext, object) {
+    if (!object.text) return;
+    const size = Math.max(1, Number(object.fontSize) || 72);
+    const lineHeight = size * Math.max(0.8, Number(object.lineHeight) || 1.04);
+    targetContext.save();
+    if (object.rotation) {
+      const center = rectangularObjectCenter(object);
+      targetContext.translate(center.x, center.y);
+      targetContext.rotate(objectRotationRadians(object));
+      targetContext.translate(-center.x, -center.y);
+    }
+    targetContext.beginPath();
+    targetContext.rect(object.x, object.y, object.width, object.height);
+    targetContext.clip();
+    targetContext.font = objectFont(object, size);
+    targetContext.textAlign = "left";
+    targetContext.textBaseline = "top";
+    targetContext.fillStyle = object.fillMode === "gradient"
+      ? linearGradientForBounds(targetContext, object.gradientName || "tide", object)
+      : object.textColor || "#ffffff";
+    const lines = wrapCanvasTextLines(targetContext, object.text, Math.max(1, object.width));
+    lines.forEach((line, index) => {
+      const y = object.y + index * lineHeight;
+      if (y <= object.y + object.height) targetContext.fillText(line, object.x, y);
+    });
+    targetContext.restore();
+  }
+
+  function drawScreenshotEdges(targetContext, phase) {
+    const transform = shareContentTransform();
+    imageLayers.forEach((layer) => {
+      if (layer.visible === false) return;
+      const settings = edgeSettingsFor(layer);
+      if (settings.edgeStyle === "none") return;
+      const bounds = imageLayerBounds(layer);
+      const radius = Math.max(0, Math.min(
+        Number(elements.cornerRadius.value) * transform.scale,
+        bounds.width / 2,
+        bounds.height / 2,
+      ));
+      const stroke = settings.edgeStyle === "gradient"
+        ? linearGradientForBounds(targetContext, settings.edgeGradient, bounds)
+        : settings.edgeColor;
+      targetContext.save();
+      roundedRectanglePath(targetContext, bounds.x, bounds.y, bounds.width, bounds.height, radius);
+      targetContext.strokeStyle = stroke;
+      targetContext.lineJoin = "round";
+      targetContext.lineWidth = Math.max(1, settings.edgeWidth);
+      if (phase === "glow") {
+        if (!settings.edgeGlow) {
+          targetContext.restore();
+          return;
+        }
+        targetContext.globalAlpha = 0.72;
+        targetContext.shadowColor = settings.edgeStyle === "solid"
+          ? settings.edgeColor
+          : (GRADIENTS[settings.edgeGradient] || GRADIENTS.tide).stops[1];
+        targetContext.shadowBlur = settings.edgeGlow;
+      }
+      targetContext.stroke();
+      targetContext.restore();
+    });
   }
 
   function roundedRectanglePath(targetContext, x, y, width, height, radius) {
@@ -4257,6 +4744,27 @@
     if (!imageLoaded || panModeEnabled || event.button !== 0) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
+    const outputPoint = canvasOutputPoint(event);
+    const selectedCanvasText = activeObject()?.mode === "canvas-text" ? activeObject() : null;
+    const canvasTextHandle = selectedCanvasText ? activeHandleAtPoint(outputPoint) : null;
+    const canvasTextHit = frameEnabled ? findObjectAtPoint(outputPoint, "share") : null;
+    if (canvasTextHandle || canvasTextHit) {
+      const object = canvasTextHit || selectedCanvasText;
+      if (object.id !== activeObjectId) selectPlacedObject(object);
+      canvas.setPointerCapture(event.pointerId);
+      beginObjectInteraction(object, outputPoint, canvasTextHandle);
+      canvas.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+      return;
+    }
+    if (mode === "canvas-text") {
+      clearSelectedObjects();
+      selection = null;
+      renderLayers();
+      updateControls();
+      render();
+      return;
+    }
     if (mode === "smart") return;
     canvas.setPointerCapture(event.pointerId);
     const point = canvasPoint(event);
@@ -4469,8 +4977,11 @@
         ArrowDown: [0, step],
       }[event.key];
       const bounds = objectBounds(selectedObject);
-      const deltaX = Math.max(-bounds.x, Math.min(documentWidth() - bounds.x - bounds.width, requestedX));
-      const deltaY = Math.max(-bounds.y, Math.min(documentHeight() - bounds.y - bounds.height, requestedY));
+      const limits = selectedObject.mode === "canvas-text"
+        ? getOutputDimensions()
+        : { width: documentWidth(), height: documentHeight() };
+      const deltaX = Math.max(-bounds.x, Math.min(limits.width - bounds.x - bounds.width, requestedX));
+      const deltaY = Math.max(-bounds.y, Math.min(limits.height - bounds.y - bounds.height, requestedY));
       if (deltaX || deltaY) {
         rememberHistoryStep();
         const index = placedObjects.findIndex((object) => object.id === selectedObject.id);
@@ -4670,9 +5181,59 @@
   elements.ratioButtons.forEach((button) => {
     button.addEventListener("click", () => setAspectPreset(button));
   });
+  elements.contentPositionButtons.forEach((button) => {
+    button.addEventListener("click", () => setContentPosition(button.dataset.contentPosition));
+  });
   elements.gradientButtons.forEach((button) => {
     button.addEventListener("click", () => setGradient(button.dataset.gradient));
   });
+  elements.edgeStyleButtons.forEach((button) => {
+    button.addEventListener("click", () => syncScreenshotEdgeFromControls({ edgeStyle: button.dataset.edgeStyle }));
+  });
+  elements.edgeGradientButtons.forEach((button) => {
+    button.addEventListener("click", () => syncScreenshotEdgeFromControls({
+      edgeStyle: "gradient",
+      edgeGradient: button.dataset.edgeGradient,
+    }));
+  });
+  elements.edgeColor.addEventListener("input", () => syncScreenshotEdgeFromControls({ edgeStyle: "solid" }));
+  elements.edgeWidth.addEventListener("input", () => syncScreenshotEdgeFromControls());
+  elements.edgeGlow.addEventListener("input", () => syncScreenshotEdgeFromControls());
+
+  elements.canvasTextFillButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      canvasTextFill = button.dataset.canvasTextFill === "gradient" ? "gradient" : "solid";
+      syncCanvasTextObjectFromControls();
+    });
+  });
+  elements.canvasTextGradientButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      canvasTextGradient = GRADIENTS[button.dataset.canvasTextGradient] ? button.dataset.canvasTextGradient : "tide";
+      canvasTextFill = "gradient";
+      syncCanvasTextObjectFromControls();
+    });
+  });
+  elements.canvasTextFontButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      canvasTextFont = TEXT_FONTS[button.dataset.canvasTextFont] ? button.dataset.canvasTextFont : "sans";
+      syncCanvasTextObjectFromControls();
+    });
+  });
+  elements.canvasTextStyleButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      canvasTextStyle = ["normal", "bold", "italic"].includes(button.dataset.canvasTextStyle)
+        ? button.dataset.canvasTextStyle
+        : "bold";
+      syncCanvasTextObjectFromControls();
+    });
+  });
+  elements.canvasTextContent.addEventListener("input", syncCanvasTextObjectFromControls);
+  elements.canvasTextColor.addEventListener("input", () => {
+    canvasTextFill = "solid";
+    syncCanvasTextObjectFromControls();
+  });
+  elements.canvasTextSize.addEventListener("input", syncCanvasTextObjectFromControls);
+  elements.canvasTextAddButton.addEventListener("click", createCanvasTextLayer);
   elements.paddingUnitButtons.forEach((button) => {
     button.addEventListener("click", () => setPaddingUnit(button.dataset.paddingUnit));
   });
@@ -4783,6 +5344,12 @@
     elements.fontSize,
     elements.autoTextSize,
     elements.replacementText,
+    elements.edgeColor,
+    elements.edgeWidth,
+    elements.edgeGlow,
+    elements.canvasTextContent,
+    elements.canvasTextColor,
+    elements.canvasTextSize,
   ].forEach((input) => input.addEventListener("change", commitPendingSettingsHistory));
   document.addEventListener("keydown", (event) => {
     const modifier = event.metaKey || event.ctrlKey;
