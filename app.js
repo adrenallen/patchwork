@@ -25,6 +25,7 @@
     newCanvasButton: document.querySelector("#newCanvasButton"),
     replaceImageButton: document.querySelector("#replaceImageButton"),
     pasteCard: document.querySelector("#pasteCard"),
+    pasteCardTitle: document.querySelector("#pasteCardTitle"),
     emptyState: document.querySelector("#emptyState"),
     canvasWrap: document.querySelector("#canvasWrap"),
     framePreview: document.querySelector("#framePreview"),
@@ -114,6 +115,7 @@
     imageMeta: document.querySelector("#imageMeta"),
     workspaceTip: document.querySelector("#workspaceTip"),
     recentList: document.querySelector("#recentList"),
+    recentSection: document.querySelector("#recentSection"),
     recentEmpty: document.querySelector("#recentEmpty"),
     clearRecentButton: document.querySelector("#clearRecentButton"),
     recentImagesList: document.querySelector("#recentImagesList"),
@@ -2078,6 +2080,7 @@
 
   function renderRecentPatches() {
     elements.recentList.querySelectorAll(".recent-preset").forEach((item) => item.remove());
+    elements.recentSection.hidden = recentPatches.length === 0;
     elements.recentEmpty.hidden = recentPatches.length > 0;
     elements.clearRecentButton.hidden = recentPatches.length === 0;
 
@@ -2370,6 +2373,8 @@
     canvas.tabIndex = 0;
     elements.editControls.setAttribute("aria-disabled", "false");
     elements.newCanvasButton.disabled = false;
+    elements.replaceImageButton.hidden = false;
+    elements.pasteCardTitle.textContent = "Add image layer";
     elements.addLayerButton.disabled = false;
     elements.canvasTextAddButton.disabled = !frameEnabled || !elements.canvasTextContent.value.trim();
     elements.copyButton.disabled = false;
@@ -2427,6 +2432,8 @@
     canvas.hidden = true;
     canvas.removeAttribute("tabindex");
     elements.editControls.setAttribute("aria-disabled", "true");
+    elements.replaceImageButton.hidden = true;
+    elements.pasteCardTitle.textContent = "Paste an image";
     elements.addLayerButton.disabled = true;
     elements.canvasTextAddButton.disabled = true;
     elements.copyButton.disabled = true;

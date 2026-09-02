@@ -208,20 +208,29 @@ canvas:focus-visible {
 .tool-panel {
   display: flex;
   flex-direction: column;
+  gap: 10px;
   min-height: 0;
-  padding: 22px 20px 18px;
+  padding: 12px;
   border-right: 1px solid var(--line);
-  background: var(--panel);
+  background: #eef2f6;
   overflow-y: auto;
 }
 
 .tool-section {
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--line);
+  border: 0;
 }
 
-.edit-section {
-  padding-top: 22px;
+.source-section,
+.edit-section,
+.presentation-section,
+.layers-section,
+.recent-section,
+.image-history-section {
+  padding: 14px;
+  border: 1px solid #dfe5ee;
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04);
 }
 
 .edit-section[aria-disabled="true"] > :not(.section-heading) {
@@ -267,11 +276,11 @@ canvas:focus-visible {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 13px;
-  gap: 12px;
+  padding: 9px;
+  gap: 9px;
   border: 1px dashed var(--line-strong);
-  border-radius: 12px;
-  background: #f6f8fb;
+  border-radius: 9px;
+  background: #f8fafc;
   color: var(--ink);
   text-align: left;
 }
@@ -286,16 +295,16 @@ canvas:focus-visible {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 7px;
   background: var(--white);
   color: var(--blue-dark);
 }
 
 .paste-icon svg {
-  width: 20px;
+  width: 17px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -309,13 +318,13 @@ canvas:focus-visible {
 }
 
 .paste-card strong {
-  margin-bottom: 4px;
-  font-size: 13px;
+  margin-bottom: 3px;
+  font-size: 12px;
 }
 
 .paste-card small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 kbd {
@@ -1173,8 +1182,7 @@ input[type="range"] {
 }
 
 .presentation-section {
-  padding: 18px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 14px;
 }
 
 .presentation-heading {
@@ -1244,8 +1252,84 @@ input[type="range"] {
 
 .presentation-controls {
   display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.sidebar-disclosure {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.sidebar-disclosure-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 9px 10px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sidebar-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-disclosure-summary > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.sidebar-disclosure-summary strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sidebar-disclosure-summary small {
+  color: var(--muted);
+  font: 8px/1.3 var(--utility);
+}
+
+.sidebar-disclosure-summary:hover {
+  background: #f2f6fb;
+}
+
+.sidebar-disclosure[open] {
+  background: var(--white);
+}
+
+.sidebar-disclosure[open] .sidebar-disclosure-summary {
+  background: #f8fafc;
+}
+
+.sidebar-disclosure[open] > .sidebar-disclosure-summary .collapse-chevron {
+  transform: rotate(180deg);
+}
+
+.share-disclosure-body {
+  padding: 11px 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.appearance-disclosure-body {
+  display: grid;
   gap: 16px;
-  padding-top: 17px;
+}
+
+.control-group-legend-hidden {
+  position: absolute;
+  overflow: hidden;
+  width: 1px !important;
+  height: 1px;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .control-group {
@@ -1921,8 +2005,7 @@ input[type="range"] {
 }
 
 .layers-section {
-  padding: 18px 0 15px;
-  border-bottom: 1px solid var(--line);
+  padding: 14px;
 }
 
 .layers-heading {
@@ -2043,8 +2126,7 @@ input[type="range"] {
 
 .image-history-section,
 .recent-section {
-  padding: 18px 0 15px;
-  border-bottom: 1px solid var(--line);
+  padding: 14px;
 }
 
 .recent-heading {
@@ -2073,7 +2155,7 @@ input[type="range"] {
   transition: transform 140ms ease;
 }
 
-.image-history-section[open] .collapse-chevron {
+.image-history-section[open] > .collapsible-heading .collapse-chevron {
   transform: rotate(180deg);
 }
 
@@ -2243,7 +2325,15 @@ input[type="range"] {
 .history-section {
   gap: 4px;
   margin-top: auto;
-  padding-top: 16px;
+  position: sticky;
+  z-index: 3;
+  bottom: 8px;
+  padding: 6px;
+  border: 1px solid rgba(184, 194, 209, 0.85);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(20, 33, 61, 0.11);
+  backdrop-filter: blur(10px);
 }
 
 .icon-text-button {
@@ -2270,7 +2360,7 @@ input[type="range"] {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  padding: 8px 8px 0;
+  padding: 1px 8px 4px;
   color: #8b96a9;
   font: 8px var(--utility);
   letter-spacing: 0.04em;
@@ -2603,6 +2693,7 @@ input[type="range"] {
 
   .history-section {
     margin-top: 0;
+    position: static;
   }
 }
 

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.5" />
+    <link rel="stylesheet" href="styles.css?v=20260901.6" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -32,17 +32,17 @@
         <aside class="tool-panel" aria-label="Editing controls">
           <section class="tool-section source-section">
             <div class="section-heading">
-              <span class="step-label">Image</span>
+              <span class="step-label">Document</span>
               <span class="section-actions">
                 <button class="text-button" id="newCanvasButton" type="button" disabled>New canvas</button>
-                <button class="text-button" id="replaceImageButton" type="button">Replace</button>
+                <button class="text-button" id="replaceImageButton" type="button" hidden>Replace</button>
               </span>
             </div>
             <button class="paste-card" id="pasteCard" type="button">
               <span class="paste-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M9 5h6m-7 3h8a2 2 0 0 1 2 2v9H6v-9a2 2 0 0 1 2-2Zm1-2V5a3 3 0 0 1 6 0v1" /></svg>
               </span>
-              <span><strong>Paste an image</strong><small><kbd>⌘</kbd><kbd>V</kbd> or choose a file</small></span>
+              <span><strong id="pasteCardTitle">Paste an image</strong><small><kbd>⌘</kbd><kbd>V</kbd> or choose a file</small></span>
             </button>
             <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
           </section>
@@ -417,11 +417,17 @@
                 <span class="switch-track" aria-hidden="true"><span></span></span>
               </label>
             </div>
-            <p class="presentation-intro">Add background around the image for sharing.</p>
+            <p class="presentation-intro">Frame the finished image for sharing or export.</p>
 
             <div class="presentation-controls" id="presentationControls" hidden>
+              <details class="sidebar-disclosure share-disclosure" open>
+                <summary class="sidebar-disclosure-summary">
+                  <span><strong>Layout</strong><small>Shape, position &amp; padding</small></span>
+                  <span class="collapse-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div class="share-disclosure-body">
               <fieldset class="control-group canvas-layout-group">
-                <legend>Canvas &amp; padding</legend>
+                <legend class="control-group-legend-hidden">Canvas layout</legend>
                 <div class="layout-size-strip" aria-live="polite">
                   <span><small>Image</small><strong id="imageSizeReadout">No image</strong></span>
                   <span class="layout-size-arrow" aria-hidden="true">→</span>
@@ -480,7 +486,15 @@
                   <p class="transparency-note" id="paddingNote">Minimum space per side. The selected shape may add more.</p>
                 </div>
               </fieldset>
+                </div>
+              </details>
 
+              <details class="sidebar-disclosure share-disclosure">
+                <summary class="sidebar-disclosure-summary">
+                  <span><strong>Appearance</strong><small>Background, edge &amp; effects</small></span>
+                  <span class="collapse-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div class="share-disclosure-body appearance-disclosure-body">
               <fieldset class="control-group">
                 <legend>Background</legend>
                 <div class="gradient-presets" role="group" aria-label="Share canvas background">
@@ -538,6 +552,8 @@
                 <input id="reflectionEnabled" type="checkbox" />
                 <span><strong>Reflection</strong><small>Mirrors the combined visible image layout once.</small></span>
               </label>
+                </div>
+              </details>
             </div>
           </section>
 
@@ -551,7 +567,7 @@
             </div>
           </section>
 
-          <section class="recent-section" aria-label="Recent tool presets">
+          <section class="recent-section" id="recentSection" aria-label="Recent tool presets" hidden>
             <div class="section-heading recent-heading">
               <span class="step-label">Recent tools</span>
               <button class="text-button" id="clearRecentButton" type="button" hidden>Clear</button>
@@ -622,6 +638,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
     <script src="share-layout.js?v=20260901.3"></script>
-    <script src="app.js?v=20260901.5"></script>
+    <script src="app.js?v=20260901.6"></script>
   </body>
 </html>
