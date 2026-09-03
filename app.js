@@ -4152,7 +4152,9 @@
       .forEach((object) => drawPlacedObject(context, object));
     const selectedObject = activeObject();
     if (mode === "smart") drawSmartTextPreview(context);
-    else if (selectedObject?.mode !== "canvas-text") selectedObjects().forEach((object) => drawObjectSelection(context, object));
+    else if (selectedObject && selectedObject.mode !== "canvas-text") {
+      selectedObjects().forEach((object) => drawObjectSelection(context, object));
+    }
     else if (mode === "arrange" && activeImageLayer()) drawSelectionOutline(context);
     else drawCurrentTool(context, true);
   }
