@@ -510,6 +510,41 @@ kbd {
   line-height: 1.4;
 }
 
+.crop-options {
+  display: grid;
+  gap: 9px;
+}
+
+.crop-scope-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.crop-scope-heading small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font: 9px var(--utility);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crop-scope-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+.crop-scope-button {
+  min-height: 32px;
+  font-size: 10px;
+}
+
+.crop-options .annotation-note {
+  margin: 0;
+}
+
 .active-tool-panel .canvas-text-options {
   width: 100%;
   min-width: 0;

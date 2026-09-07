@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260901.7" />
+    <link rel="stylesheet" href="styles.css?v=20260907.1" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -108,6 +108,18 @@
                 <span>Selected tool</span>
                 <strong id="activeToolName">Mask</strong>
                 <p id="activeToolDescription">Cover an area with a color or pattern.</p>
+              </div>
+
+              <div class="crop-options" id="cropOptions" hidden>
+                <div class="crop-scope-heading">
+                  <span class="field-label" id="cropScopeLabel">Crop</span>
+                  <small id="cropTargetName">Whole canvas</small>
+                </div>
+                <div class="segmented-control crop-scope-control" role="group" aria-labelledby="cropScopeLabel">
+                  <button class="segment crop-scope-button is-active" type="button" data-crop-scope="canvas" aria-pressed="true">Canvas</button>
+                  <button class="segment crop-scope-button" type="button" data-crop-scope="layer" aria-pressed="false">Selected layer</button>
+                </div>
+                <p class="annotation-note" id="cropScopeNote">Resizes the canvas and keeps everything inside the crop.</p>
               </div>
 
               <div id="patchFillOptions">
@@ -655,7 +667,7 @@
               <span>Then drag over anything you want to cover.</span>
             </button>
             <div class="frame-preview" id="framePreview" hidden>
-              <canvas id="editorCanvas" aria-label="Image editor. Drag to place the selected tool. Use Arrange to select, move, and resize image layers. Click an existing edit to move or resize it, and use the middle diamond handle to bend lines and arrows. Use Crop, then drag the crop area. Keyboard users can use arrow keys to move a selected edit and Delete to remove it." hidden></canvas>
+              <canvas id="editorCanvas" aria-label="Image editor. Drag to place the selected tool. Use Arrange to select, move, and resize image layers. Click an existing edit to move or resize it, and use the middle diamond handle to bend lines and arrows. Use Crop, choose Canvas or Selected layer, then drag the crop area. Keyboard users can use arrow keys to move a selected edit and Delete to remove it." hidden></canvas>
             </div>
           </div>
         </section>
@@ -665,6 +677,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
     <script src="share-layout.js?v=20260901.3"></script>
-    <script src="app.js?v=20260903.1"></script>
+    <script src="app.js?v=20260907.1"></script>
   </body>
 </html>

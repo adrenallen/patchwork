@@ -43,6 +43,10 @@
     activeToolPanel: document.querySelector("#activeToolPanel"),
     activeToolName: document.querySelector("#activeToolName"),
     activeToolDescription: document.querySelector("#activeToolDescription"),
+    cropOptions: document.querySelector("#cropOptions"),
+    cropScopeButtons: [...document.querySelectorAll(".crop-scope-button")],
+    cropTargetName: document.querySelector("#cropTargetName"),
+    cropScopeNote: document.querySelector("#cropScopeNote"),
     patchFillOptions: document.querySelector("#patchFillOptions"),
     blurOptions: document.querySelector("#blurOptions"),
     blurStyleButtons: [...document.querySelectorAll(".blur-style-button")],
@@ -303,6 +307,7 @@
   let paddingUnit = "percent";
   let contentPosition = "center";
   let reflectionEnabled = false;
+  let cropScope = "canvas";
   let canvasTextFill = "solid";
   let canvasTextGradient = "tide";
   let canvasTextGradientStops = [...GRADIENTS.tide.stops];
@@ -918,6 +923,38 @@
   function imageLayerBounds(layer) {
     if (!frameEnabled) return { x: layer.x, y: layer.y, width: layer.width, height: layer.height };
     return mapDocumentBounds(layer, shareContentTransform());
+  }
+
+  function documentImageLayerBounds(layer) {
+    return { x: layer.x, y: layer.y, width: layer.width, height: layer.height };
+  }
+
+  function imageLayerSourceBounds(layer) {
+    const naturalWidth = Math.max(1, layer.image?.naturalWidth || layer.blob?.width || 1);
+    const naturalHeight = Math.max(1, layer.image?.naturalHeight || layer.blob?.height || 1);
+    const x = Math.max(0, Math.min(naturalWidth - 1, Number(layer.sourceX) || 0));
+    const y = Math.max(0, Math.min(naturalHeight - 1, Number(layer.sourceY) || 0));
+    return {
+      x,
+      y,
+      width: Math.max(1, Math.min(naturalWidth - x, Number(layer.sourceWidth) || naturalWidth)),
+      height: Math.max(1, Math.min(naturalHeight - y, Number(layer.sourceHeight) || naturalHeight)),
+    };
+  }
+
+  function drawImageLayer(targetContext, layer, bounds = documentImageLayerBounds(layer)) {
+    const source = imageLayerSourceBounds(layer);
+    targetContext.drawImage(
+      layer.image,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+    );
   }
 
   function applyShareBoundsToLayer(layer, bounds) {
@@ -2343,7 +2380,7 @@
       canvas.style.removeProperty("border-radius");
       canvas.style.removeProperty("margin-bottom");
       const selectedLayer = activeImageLayer();
-      if (selectedLayer) selection = imageLayerBounds(selectedLayer);
+      if (selectedLayer) selection = mode === "crop" ? null : imageLayerBounds(selectedLayer);
       updateImageMeta();
       renderLayers();
       updateViewTransform();
@@ -2373,7 +2410,7 @@
     canvas.style.borderRadius = "0";
     canvas.style.marginBottom = "0";
     const selectedLayer = activeImageLayer();
-    if (selectedLayer) selection = imageLayerBounds(selectedLayer);
+    if (selectedLayer) selection = mode === "crop" ? null : imageLayerBounds(selectedLayer);
     updateImageMeta();
     renderLayers();
     updateViewTransform();
@@ -2409,6 +2446,10 @@
       y: Number.isFinite(placement.y) ? placement.y : 0,
       width: Number.isFinite(placement.width) ? placement.width : image.naturalWidth,
       height: Number.isFinite(placement.height) ? placement.height : image.naturalHeight,
+      sourceX: Number.isFinite(placement.sourceX) ? placement.sourceX : 0,
+      sourceY: Number.isFinite(placement.sourceY) ? placement.sourceY : 0,
+      sourceWidth: Number.isFinite(placement.sourceWidth) ? placement.sourceWidth : image.naturalWidth,
+      sourceHeight: Number.isFinite(placement.sourceHeight) ? placement.sourceHeight : image.naturalHeight,
       visible: placement.visible !== false,
       edgeStyle: ["none", "solid", "gradient"].includes(placement.edgeStyle)
         ? placement.edgeStyle
@@ -2683,10 +2724,21 @@
     const thumbnailContext = thumbnail.getContext("2d");
     thumbnailContext.fillStyle = "#ffffff";
     thumbnailContext.fillRect(0, 0, thumbnail.width, thumbnail.height);
-    const scale = Math.min(thumbnail.width / layer.image.naturalWidth, thumbnail.height / layer.image.naturalHeight);
-    const width = layer.image.naturalWidth * scale;
-    const height = layer.image.naturalHeight * scale;
-    thumbnailContext.drawImage(layer.image, (thumbnail.width - width) / 2, (thumbnail.height - height) / 2, width, height);
+    const source = imageLayerSourceBounds(layer);
+    const scale = Math.min(thumbnail.width / source.width, thumbnail.height / source.height);
+    const width = source.width * scale;
+    const height = source.height * scale;
+    thumbnailContext.drawImage(
+      layer.image,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
+      (thumbnail.width - width) / 2,
+      (thumbnail.height - height) / 2,
+      width,
+      height,
+    );
     return thumbnail.toDataURL("image/png");
   }
 
@@ -2694,12 +2746,14 @@
     commitPendingSettingsHistory();
     clearSelectedObjects();
     activeImageLayerId = layer.id;
-    selection = imageLayerBounds(layer);
+    const keepLayerCropActive = mode === "crop" && cropScope === "layer";
+    selection = keepLayerCropActive ? null : imageLayerBounds(layer);
     arrowStart = null;
     arrowEnd = null;
-    setMode("arrange", { preserveLayer: true });
+    if (!keepLayerCropActive) setMode("arrange", { preserveLayer: true });
     renderLayers();
     updateScreenshotEdgeControls();
+    updateCropControls();
     updateControls();
     render();
     canvas.focus({ preventScroll: true });
@@ -2728,7 +2782,7 @@
       activeImageLayerId = imageLayers.at(-1)?.id || null;
     }
     const layer = activeImageLayer();
-    selection = layer ? imageLayerBounds(layer) : null;
+    selection = layer && mode !== "crop" ? imageLayerBounds(layer) : null;
     rebuildBaseCanvas();
     renderLayers();
     updateControls();
@@ -2834,6 +2888,7 @@
       row.append(select, actions);
       elements.layersList.append(row);
     });
+    updateCropControls();
   }
 
   function canvasOutputPoint(event) {
@@ -2848,7 +2903,8 @@
 
   function canvasPoint(event) {
     const point = canvasOutputPoint(event);
-    return frameEnabled && !["arrange", "canvas-text"].includes(mode) ? documentPointFromShare(point) : point;
+    const usesShareSpace = ["arrange", "canvas-text"].includes(mode) || cropTargetsLayer();
+    return frameEnabled && !usesShareSpace ? documentPointFromShare(point) : point;
   }
 
   function normalizeBox(start, end) {
@@ -2862,13 +2918,15 @@
 
   function viewHitTolerance() {
     const outputTolerance = Math.max(4, 10 * canvas.width / Math.max(canvas.getBoundingClientRect().width, 1));
-    if (frameEnabled && !["arrange", "canvas-text"].includes(mode)) return outputTolerance / shareContentTransform().scale;
+    const usesShareSpace = ["arrange", "canvas-text"].includes(mode) || cropTargetsLayer();
+    if (frameEnabled && !usesShareSpace) return outputTolerance / shareContentTransform().scale;
     return outputTolerance;
   }
 
   function toolDisplayScale() {
     const outputScale = canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
-    return frameEnabled && !["arrange", "canvas-text"].includes(mode) ? outputScale / shareContentTransform().scale : outputScale;
+    const usesShareSpace = ["arrange", "canvas-text"].includes(mode) || cropTargetsLayer();
+    return frameEnabled && !usesShareSpace ? outputScale / shareContentTransform().scale : outputScale;
   }
 
   function distanceBetween(left, right) {
@@ -3007,6 +3065,13 @@
     const bounds = imageLayerBounds(layer);
     return point.x >= bounds.x && point.x <= bounds.x + bounds.width
       && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  }
+
+  function constrainPointToBounds(point, bounds) {
+    return {
+      x: Math.max(bounds.x, Math.min(bounds.x + bounds.width, point.x)),
+      y: Math.max(bounds.y, Math.min(bounds.y + bounds.height, point.y)),
+    };
   }
 
   function findImageLayerAtPoint(point) {
@@ -3738,12 +3803,15 @@
     targetContext.restore();
   }
 
-  function drawCropPreview(targetContext) {
+  function drawCropPreview(targetContext, shadeBounds = null) {
     if (!selection) return;
+    const bounds = shadeBounds || (cropTargetsLayer() && activeImageLayer()
+      ? documentImageLayerBounds(activeImageLayer())
+      : { x: 0, y: 0, width: documentWidth(), height: documentHeight() });
     targetContext.save();
     targetContext.fillStyle = "rgba(15, 23, 42, 0.48)";
     targetContext.beginPath();
-    targetContext.rect(0, 0, documentWidth(), documentHeight());
+    targetContext.rect(bounds.x, bounds.y, bounds.width, bounds.height);
     targetContext.rect(selection.x, selection.y, selection.width, selection.height);
     targetContext.fill("evenodd");
     targetContext.restore();
@@ -3965,7 +4033,7 @@
     sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
     imageLayers.forEach((layer) => {
       if (layer.visible === false) return;
-      sourceContext.drawImage(layer.image, layer.x, layer.y, layer.width, layer.height);
+      drawImageLayer(sourceContext, layer);
     });
   }
 
@@ -4011,49 +4079,123 @@
     targetContext.restore();
   }
 
-  function prepareShareContentSurface(bounds) {
-    const width = Math.max(1, Math.round(bounds.width));
-    const height = Math.max(1, Math.round(bounds.height));
+  function drawShareImageLayer(targetContext, layer) {
+    const bounds = imageLayerBounds(layer);
+    const radius = Math.max(0, Math.min(
+      Number(elements.cornerRadius.value) * shareContentTransform().scale,
+      bounds.width / 2,
+      bounds.height / 2,
+    ));
+    if (shareHasBackgroundArea()) {
+      const shadowUnit = Math.min(targetContext.canvas.width, targetContext.canvas.height);
+      targetContext.save();
+      targetContext.strokeStyle = "rgba(15, 23, 42, 0.22)";
+      targetContext.lineWidth = 0.5;
+      targetContext.shadowColor = "rgba(15, 23, 42, 0.3)";
+      targetContext.shadowBlur = shadowUnit * 0.028;
+      targetContext.shadowOffsetY = shadowUnit * 0.014;
+      roundedRectanglePath(targetContext, bounds.x, bounds.y, bounds.width, bounds.height, radius);
+      targetContext.stroke();
+      targetContext.restore();
+    }
+    drawScreenshotEdge(targetContext, layer, bounds, "glow");
+    targetContext.save();
+    roundedRectanglePath(targetContext, bounds.x, bounds.y, bounds.width, bounds.height, radius);
+    targetContext.clip();
+    drawImageLayer(targetContext, layer, bounds);
+    targetContext.restore();
+    drawScreenshotEdge(targetContext, layer, bounds, "outline");
+  }
+
+  function drawShareDocumentObject(targetContext, object) {
+    if (object.mode === "blur") {
+      drawBlurRegion(targetContext, shareBlurObject(object));
+      return;
+    }
+    const transform = shareContentTransform();
+    targetContext.save();
+    targetContext.translate(transform.x, transform.y);
+    targetContext.scale(transform.scale, transform.scale);
+    drawPlacedObject(targetContext, object);
+    targetContext.restore();
+  }
+
+  function prepareShareContentSurface() {
+    const dimensions = getOutputDimensions();
+    const width = Math.max(1, Math.round(dimensions.width));
+    const height = Math.max(1, Math.round(dimensions.height));
     if (shareContentSurface.width !== width) shareContentSurface.width = width;
     if (shareContentSurface.height !== height) shareContentSurface.height = height;
     shareContentSurfaceContext.setTransform(1, 0, 0, 1, 0, 0);
     shareContentSurfaceContext.clearRect(0, 0, width, height);
     shareContentSurfaceContext.imageSmoothingEnabled = true;
     shareContentSurfaceContext.imageSmoothingQuality = "high";
-    const radiusScale = width / Math.max(1, bounds.width);
-    const radius = Number(elements.cornerRadius.value) * radiusScale;
-    shareContentSurfaceContext.save();
-    roundedRectanglePath(shareContentSurfaceContext, 0, 0, width, height, radius);
-    shareContentSurfaceContext.clip();
-    shareContentSurfaceContext.drawImage(baseCanvas, 0, 0, width, height);
-    shareContentSurfaceContext.restore();
+    imageLayers.forEach((layer) => {
+      if (layer.visible !== false) drawShareImageLayer(shareContentSurfaceContext, layer);
+    });
+    placedObjects
+      .filter((object) => object.mode !== "canvas-text")
+      .forEach((object) => drawShareDocumentObject(shareContentSurfaceContext, object));
     return shareContentSurface;
   }
 
-  function drawShareEditableCanvas(targetContext, bounds, surface) {
-    targetContext.save();
-    if (shareHasBackgroundArea()) {
-      const shadowUnit = Math.min(targetContext.canvas.width, targetContext.canvas.height);
-      targetContext.shadowColor = "rgba(15, 23, 42, 0.3)";
-      targetContext.shadowBlur = shadowUnit * 0.028;
-      targetContext.shadowOffsetY = shadowUnit * 0.014;
-    }
-    targetContext.drawImage(surface, bounds.x, bounds.y, bounds.width, bounds.height);
-    targetContext.restore();
+  function drawShareEditableCanvas(targetContext, surface) {
+    targetContext.drawImage(surface, 0, 0);
   }
 
-  function drawCombinedShareReflection(targetContext, bounds, surface, reflection) {
+  function visibleShareArtworkBounds() {
+    const visibleLayers = imageLayers.filter((layer) => layer.visible !== false);
+    if (!visibleLayers.length) return null;
+    const bounds = visibleLayers.map((layer) => {
+      const layerBounds = imageLayerBounds(layer);
+      const settings = edgeSettingsFor(layer);
+      const overflow = settings.edgeStyle === "none"
+        ? 0
+        : settings.edgeWidth / 2 + settings.edgeGlow * 1.5;
+      return {
+        x: layerBounds.x - overflow,
+        y: layerBounds.y - overflow,
+        width: layerBounds.width + overflow * 2,
+        height: layerBounds.height + overflow * 2,
+      };
+    });
+    const left = Math.max(0, Math.min(...bounds.map((item) => item.x)));
+    const top = Math.max(0, Math.min(...bounds.map((item) => item.y)));
+    const right = Math.min(canvas.width, Math.max(...bounds.map((item) => item.x + item.width)));
+    const bottom = Math.min(canvas.height, Math.max(...bounds.map((item) => item.y + item.height)));
+    return right > left && bottom > top
+      ? { x: left, y: top, width: right - left, height: bottom - top }
+      : null;
+  }
+
+  function drawCombinedShareReflection(targetContext, surface, reflection, contentBounds) {
     if (!reflectionEnabled) return;
-    const reflectionHeight = Math.max(1, Math.ceil(surface.height * 0.22));
-    const reflectionWidth = surface.width;
+    const bounds = visibleShareArtworkBounds();
+    if (!bounds) return;
+    const reflectionHeight = Math.max(1, Math.min(
+      Math.ceil(bounds.height * 0.22),
+      Math.ceil(reflection.height),
+    ));
+    const reflectionWidth = Math.max(1, Math.ceil(bounds.width));
     if (shareReflectionCanvas.width !== reflectionWidth) shareReflectionCanvas.width = reflectionWidth;
     if (shareReflectionCanvas.height !== reflectionHeight) shareReflectionCanvas.height = reflectionHeight;
     shareReflectionContext.setTransform(1, 0, 0, 1, 0, 0);
     shareReflectionContext.globalCompositeOperation = "source-over";
     shareReflectionContext.clearRect(0, 0, shareReflectionCanvas.width, shareReflectionCanvas.height);
-    shareReflectionContext.translate(0, surface.height);
+    const sourceStripHeight = Math.min(bounds.height, reflectionHeight);
+    shareReflectionContext.translate(0, reflectionHeight);
     shareReflectionContext.scale(1, -1);
-    shareReflectionContext.drawImage(surface, 0, 0);
+    shareReflectionContext.drawImage(
+      surface,
+      bounds.x,
+      bounds.y + bounds.height - sourceStripHeight,
+      bounds.width,
+      sourceStripHeight,
+      0,
+      0,
+      reflectionWidth,
+      reflectionHeight,
+    );
     shareReflectionContext.setTransform(1, 0, 0, 1, 0, 0);
     shareReflectionContext.globalCompositeOperation = "destination-in";
     const fade = shareReflectionContext.createLinearGradient(0, 0, 0, reflectionHeight);
@@ -4065,9 +4207,9 @@
     targetContext.drawImage(
       shareReflectionCanvas,
       bounds.x,
-      bounds.y + bounds.height + reflection.gap,
+      contentBounds.y + contentBounds.height + reflection.gap,
       bounds.width,
-      reflection.height,
+      reflectionHeight,
     );
   }
 
@@ -4091,6 +4233,10 @@
     }
     if (mode === "arrange" && activeImageLayer()) {
       drawSelectionOutline(targetContext, imageLayerBounds(activeImageLayer()));
+      return;
+    }
+    if (cropTargetsLayer()) {
+      if (selection && activeImageLayer()) drawCropPreview(targetContext, imageLayerBounds(activeImageLayer()));
       return;
     }
     if (mode === "canvas-text" && selection) {
@@ -4128,11 +4274,9 @@
     targetContext.imageSmoothingQuality = "high";
     if (!frameBackgroundIsTransparent()) fillGradient(targetContext, targetContext.canvas.width, targetContext.canvas.height);
     const layout = getShareLayout();
-    const surface = prepareShareContentSurface(layout.content);
-    drawCombinedShareReflection(targetContext, layout.content, surface, layout.reflection);
-    drawScreenshotEdges(targetContext, "glow");
-    drawShareEditableCanvas(targetContext, layout.content, surface);
-    drawScreenshotEdges(targetContext, "outline");
+    const surface = prepareShareContentSurface();
+    drawCombinedShareReflection(targetContext, surface, layout.reflection, layout.content);
+    drawShareEditableCanvas(targetContext, surface);
     placedObjects
       .filter((object) => object.mode === "canvas-text")
       .forEach((object) => drawCanvasTextObject(targetContext, object));
@@ -4208,6 +4352,52 @@
     }
   }
 
+  function cropTargetsLayer() {
+    return mode === "crop" && cropScope === "layer";
+  }
+
+  function updateCropControls() {
+    const layer = activeImageLayer();
+    elements.cropScopeButtons.forEach((button) => {
+      const active = button.dataset.cropScope === cropScope;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    elements.cropTargetName.textContent = cropScope === "layer"
+      ? layer?.name || "Choose a layer below"
+      : "Whole canvas";
+    elements.cropScopeNote.textContent = cropScope === "layer"
+      ? layer
+        ? `Only ${layer.name || "the selected layer"} changes; the canvas and other layers stay put.`
+        : "Choose an image in Layers, then drag over the part to keep."
+      : "Resizes the canvas and keeps everything inside the crop.";
+    if (mode === "crop") {
+      elements.activeToolDescription.textContent = cropScope === "layer"
+        ? "Keep one part of the selected image layer."
+        : "Keep one part of the canvas and all its layers.";
+      if (imageLoaded) {
+        elements.workspaceTip.textContent = cropScope === "layer"
+          ? "Choose a layer below · drag over the part to keep"
+          : "Drag a box to crop the whole canvas";
+      }
+    }
+  }
+
+  function setCropScope(nextScope) {
+    cropScope = nextScope === "layer" ? "layer" : "canvas";
+    if (cropScope === "layer" && !activeImageLayer()) {
+      activeImageLayerId = [...imageLayers].reverse().find((layer) => layer.visible !== false)?.id || null;
+    }
+    selection = null;
+    arrowStart = null;
+    arrowEnd = null;
+    updateCropControls();
+    renderLayers();
+    updateControls();
+    render();
+    if (cropScope === "layer" && !activeImageLayer()) showToast("Add or select an image layer to crop it.");
+  }
+
   function setMode(nextMode, { preserveActive = false, preserveLayer = false, loadSettings = true } = {}) {
     const previousMode = mode;
     if (!activeObject()) captureToolSettings(mode);
@@ -4266,10 +4456,11 @@
     elements.blurOptions.hidden = !isBlur;
     elements.annotationOptions.hidden = !isAnnotation;
     elements.canvasTextOptions.hidden = !isCanvasText;
+    elements.cropOptions.hidden = mode !== "crop";
     const [toolName, toolDescription] = TOOL_DETAILS[mode];
     elements.activeToolName.textContent = toolName;
     elements.activeToolDescription.textContent = toolDescription;
-    elements.activeToolPanel.classList.toggle("has-settings", !["arrange", "crop"].includes(mode));
+    elements.activeToolPanel.classList.toggle("has-settings", mode !== "arrange");
     elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
       ? `Drag the ${mode}, then move the diamond handle to bend it.`
       : "Drag a box around the area to circle.";
@@ -4278,12 +4469,20 @@
       arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
     }
     if (loadSettings && !isSmartText) applyToolSettings(mode);
+    if (mode === "crop" && previousMode !== "crop") {
+      selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+    }
+    updateCropControls();
     if (isSmartText) ensureSmartTextAnalysisIsFresh();
     if (imageLoaded) {
       elements.workspaceTip.textContent = mode === "arrange"
         ? "Click an image · drag to move · corners resize"
         : mode === "crop"
-          ? "Drag a box to crop immediately"
+          ? cropScope === "layer"
+            ? "Choose a layer below · drag over the part to keep"
+            : "Drag a box to crop the whole canvas"
           : mode === "canvas-text"
             ? activeObject()
               ? "Drag to move · corners resize · top handle rotates · Offset fine-tunes"
@@ -4568,8 +4767,72 @@
     }[mode]);
   }
 
+  function intersectBounds(left, right) {
+    const x = Math.max(left.x, right.x);
+    const y = Math.max(left.y, right.y);
+    const maximumX = Math.min(left.x + left.width, right.x + right.width);
+    const maximumY = Math.min(left.y + left.height, right.y + right.height);
+    return {
+      x,
+      y,
+      width: Math.max(0, maximumX - x),
+      height: Math.max(0, maximumY - y),
+    };
+  }
+
+  function cropLayerToSelection() {
+    const layer = activeImageLayer();
+    if (!layer || !selection) {
+      showToast("Choose an image layer before cropping it.");
+      return;
+    }
+    const layerBounds = imageLayerBounds(layer);
+    const croppedBounds = intersectBounds(selection, layerBounds);
+    if (croppedBounds.width < 2 || croppedBounds.height < 2) {
+      showToast("Drag inside the selected layer to crop it.");
+      return;
+    }
+    if (
+      Math.abs(croppedBounds.x - layerBounds.x) < 0.5
+      && Math.abs(croppedBounds.y - layerBounds.y) < 0.5
+      && Math.abs(croppedBounds.width - layerBounds.width) < 0.5
+      && Math.abs(croppedBounds.height - layerBounds.height) < 0.5
+    ) {
+      showToast("That crop already covers the full layer.");
+      return;
+    }
+
+    rememberHistoryStep();
+    const source = imageLayerSourceBounds(layer);
+    const relativeX = (croppedBounds.x - layerBounds.x) / Math.max(1, layerBounds.width);
+    const relativeY = (croppedBounds.y - layerBounds.y) / Math.max(1, layerBounds.height);
+    const relativeWidth = croppedBounds.width / Math.max(1, layerBounds.width);
+    const relativeHeight = croppedBounds.height / Math.max(1, layerBounds.height);
+    layer.sourceX = source.x + source.width * relativeX;
+    layer.sourceY = source.y + source.height * relativeY;
+    layer.sourceWidth = source.width * relativeWidth;
+    layer.sourceHeight = source.height * relativeHeight;
+    if (frameEnabled) applyShareBoundsToLayer(layer, croppedBounds);
+    else Object.assign(layer, croppedBounds);
+
+    selection = null;
+    arrowStart = null;
+    arrowEnd = null;
+    rebuildBaseCanvas();
+    renderLayers();
+    updateCropControls();
+    updateControls();
+    render();
+    scheduleCurrentImageSave();
+    showToast(`Cropped ${layer.name || "layer"} to ${Math.round(layer.sourceWidth)} × ${Math.round(layer.sourceHeight)} px.`);
+  }
+
   function cropToSelection() {
     if (!selection || selection.width < 2 || selection.height < 2) return;
+    if (cropScope === "layer") {
+      cropLayerToSelection();
+      return;
+    }
     const left = Math.max(0, Math.floor(selection.x));
     const top = Math.max(0, Math.floor(selection.y));
     const right = Math.min(baseCanvas.width, Math.ceil(selection.x + selection.width));
@@ -4770,40 +5033,36 @@
     targetContext.restore();
   }
 
-  function drawScreenshotEdges(targetContext, phase) {
+  function drawScreenshotEdge(targetContext, layer, bounds, phase) {
     const transform = shareContentTransform();
-    imageLayers.forEach((layer) => {
-      if (layer.visible === false) return;
-      const settings = edgeSettingsFor(layer);
-      if (settings.edgeStyle === "none") return;
-      const bounds = imageLayerBounds(layer);
-      const radius = Math.max(0, Math.min(
-        Number(elements.cornerRadius.value) * transform.scale,
-        bounds.width / 2,
-        bounds.height / 2,
-      ));
-      const stroke = settings.edgeStyle === "gradient"
-        ? linearGradientForBounds(targetContext, settings.edgeGradient, bounds, settings.edgeGradientStops)
-        : settings.edgeColor;
-      targetContext.save();
-      roundedRectanglePath(targetContext, bounds.x, bounds.y, bounds.width, bounds.height, radius);
-      targetContext.strokeStyle = stroke;
-      targetContext.lineJoin = "round";
-      targetContext.lineWidth = Math.max(1, settings.edgeWidth);
-      if (phase === "glow") {
-        if (!settings.edgeGlow) {
-          targetContext.restore();
-          return;
-        }
-        targetContext.globalAlpha = 0.72;
-        targetContext.shadowColor = settings.edgeStyle === "solid"
-          ? settings.edgeColor
-          : settings.edgeGradientStops[1];
-        targetContext.shadowBlur = settings.edgeGlow;
+    const settings = edgeSettingsFor(layer);
+    if (settings.edgeStyle === "none") return;
+    const radius = Math.max(0, Math.min(
+      Number(elements.cornerRadius.value) * transform.scale,
+      bounds.width / 2,
+      bounds.height / 2,
+    ));
+    const stroke = settings.edgeStyle === "gradient"
+      ? linearGradientForBounds(targetContext, settings.edgeGradient, bounds, settings.edgeGradientStops)
+      : settings.edgeColor;
+    targetContext.save();
+    roundedRectanglePath(targetContext, bounds.x, bounds.y, bounds.width, bounds.height, radius);
+    targetContext.strokeStyle = stroke;
+    targetContext.lineJoin = "round";
+    targetContext.lineWidth = Math.max(1, settings.edgeWidth);
+    if (phase === "glow") {
+      if (!settings.edgeGlow) {
+        targetContext.restore();
+        return;
       }
-      targetContext.stroke();
-      targetContext.restore();
-    });
+      targetContext.globalAlpha = 0.72;
+      targetContext.shadowColor = settings.edgeStyle === "solid"
+        ? settings.edgeColor
+        : settings.edgeGradientStops[1];
+      targetContext.shadowBlur = settings.edgeGlow;
+    }
+    targetContext.stroke();
+    targetContext.restore();
   }
 
   function roundedRectanglePath(targetContext, x, y, width, height, radius) {
@@ -4986,6 +5245,35 @@
       }
       return;
     }
+    if (cropTargetsLayer()) {
+      commitPendingSettingsHistory();
+      clearSelectedObjects();
+      const selectedLayer = activeImageLayer();
+      const layer = selectedLayer && imageLayerContainsPoint(selectedLayer, point)
+        ? selectedLayer
+        : findImageLayerAtPoint(point);
+      if (!layer) {
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        showToast("Drag inside an image layer, or choose one from Layers.");
+        return;
+      }
+      if (layer.id !== activeImageLayerId) {
+        activeImageLayerId = layer.id;
+        renderLayers();
+        updateScreenshotEdgeControls();
+        updateCropControls();
+      }
+      dragStart = constrainPointToBounds(point, imageLayerBounds(layer));
+      arrowStart = { ...dragStart };
+      arrowEnd = { ...dragStart };
+      selection = { x: dragStart.x, y: dragStart.y, width: 0, height: 0 };
+      isSelecting = true;
+      canvas.classList.add("is-selecting");
+      document.body.style.userSelect = "none";
+      updateControls();
+      render();
+      return;
+    }
     const selectedHandle = activeHandleAtPoint(point);
     if (mode !== "crop" && activeObject() && selectedHandle) {
       beginObjectInteraction(activeObject(), point, selectedHandle);
@@ -5071,8 +5359,11 @@
       return;
     }
 
-    arrowEnd = { ...currentPoint };
-    selection = normalizeBox(dragStart, currentPoint);
+    const selectionPoint = cropTargetsLayer() && activeImageLayer()
+      ? constrainPointToBounds(currentPoint, imageLayerBounds(activeImageLayer()))
+      : currentPoint;
+    arrowEnd = { ...selectionPoint };
+    selection = normalizeBox(dragStart, selectionPoint);
     updateControls();
     render();
   });
@@ -5255,7 +5546,10 @@
   elements.circleModeButton.addEventListener("click", () => setMode("circle"));
   elements.arrowModeButton.addEventListener("click", () => setMode("arrow"));
   elements.lineModeButton.addEventListener("click", () => setMode("line"));
-  elements.cropModeButton.addEventListener("click", () => setMode("crop"));
+  elements.cropModeButton.addEventListener("click", () => setMode("crop", { preserveLayer: true }));
+  elements.cropScopeButtons.forEach((button) => {
+    button.addEventListener("click", () => setCropScope(button.dataset.cropScope));
+  });
   elements.analyzeTextButton.addEventListener("click", analyzeSmartText);
   elements.smartTextQuery.addEventListener("input", updateSmartTextMatches);
   elements.smartTextCaseSensitive.addEventListener("change", updateSmartTextMatches);
