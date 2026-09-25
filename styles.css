@@ -1182,8 +1182,21 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .annotation-style-button {
-  min-height: 32px;
-  font-size: 10px;
+  min-height: 46px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px;
+  font-size: 12px;
+}
+
+.annotation-style-button svg {
+  width: 42px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .annotation-roughness-field {

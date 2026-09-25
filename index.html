@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef1f5" />
     <title>Patchwork — quick image redaction</title>
     <link rel="icon" type="image/png" sizes="256x256" href="assets/patchwork-logo.png?v=20260830.2" />
-    <link rel="stylesheet" href="styles.css?v=20260907.1" />
+    <link rel="stylesheet" href="styles.css?v=20260925.1" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to image workspace</a>
@@ -329,8 +329,12 @@
               <div class="annotation-style-field">
                 <span class="field-label" id="annotationStyleLabel">Stroke style</span>
                 <div class="segmented-control annotation-style-control" role="group" aria-labelledby="annotationStyleLabel">
-                  <button class="segment annotation-style-button is-active" type="button" data-annotation-style="clean" aria-pressed="true">Clean</button>
-                  <button class="segment annotation-style-button" type="button" data-annotation-style="hand" aria-pressed="false">Hand drawn</button>
+                  <button class="segment annotation-style-button is-active" type="button" data-annotation-style="clean" aria-pressed="true">
+                    <svg viewBox="0 0 42 16" aria-hidden="true"><path d="M3 8H39" /></svg><span>Clean</span>
+                  </button>
+                  <button class="segment annotation-style-button" type="button" data-annotation-style="hand" aria-pressed="false">
+                    <svg viewBox="0 0 42 16" aria-hidden="true"><path d="M3 9C11 4 16 10 23 7S34 5 39 8" /></svg><span>Hand drawn</span>
+                  </button>
                 </div>
               </div>
               <label class="range-field annotation-roughness-field" id="annotationRoughnessField" for="annotationRoughness" hidden>
@@ -677,6 +681,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="smart-text.js?v=20260830.3"></script>
     <script src="share-layout.js?v=20260901.3"></script>
-    <script src="app.js?v=20260907.1"></script>
+    <script src="app.js?v=20260925.1"></script>
   </body>
 </html>

@@ -273,7 +273,7 @@
   const MAX_RECENT_PATCHES = 10;
   const MIN_VIEW_ZOOM = 0.5;
   const MAX_VIEW_ZOOM = 4;
-  const ROUGHNESS_LABELS = ["", "Neat", "Natural", "Loose", "Messy", "Scribbly"];
+  const ROUGHNESS_LABELS = ["", "Subtle", "Natural", "Loose", "Expressive", "Very loose"];
   const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
 
   let imageLoaded = false;
@@ -3501,11 +3501,6 @@
     targetContext.shadowOffsetY = Math.max(1, size * 0.22);
   }
 
-  function seededSigned(seed) {
-    const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-    return (value - Math.floor(value)) * 2 - 1;
-  }
-
   function strokeSmoothPoints(targetContext, points) {
     if (points.length < 2) return;
     targetContext.beginPath();
@@ -3518,36 +3513,31 @@
     targetContext.stroke();
   }
 
-  function roughEllipsePoints(box, size, roughness, pass = 0) {
+  function roughEllipsePoints(box, size, roughness) {
     const centerX = box.x + box.width / 2;
     const centerY = box.y + box.height / 2;
     const radiusX = Math.max(0.5, box.width / 2 - size / 2);
     const radiusY = Math.max(0.5, box.height / 2 - size / 2);
     const amount = clampNumber(roughness, 1, 5, 3);
-    const looseness = (amount - 1) / 4;
-    const gap = 0.16 + amount * 0.052 + pass * 0.018;
-    const gapCenter = -0.48 + pass * 0.035;
+    const gap = 0.07 + amount * 0.025;
+    const gapCenter = -0.48;
     const startAngle = gapCenter + gap / 2;
     const endAngle = gapCenter + Math.PI * 2 - gap / 2;
-    const segments = Math.max(24, Math.min(64, Math.round((radiusX + radiusY) / 8) + amount * 2));
-    const seed = centerX * 0.021 + centerY * 0.037 + box.width * 0.013 + box.height * 0.017 + pass * 17.3;
-    const amplitude = Math.min(
-      Math.min(radiusX, radiusY) * 0.16,
-      size * (0.42 + amount * 0.32) + Math.min(Math.min(radiusX, radiusY) * 0.018 * amount, size * 1.8),
-    );
-    const rotation = -0.025 - looseness * 0.065 + pass * 0.018;
+    const segments = Math.max(36, Math.min(96, Math.round((radiusX + radiusY) / 5)));
+    const seed = centerX * 0.021 + centerY * 0.037 + box.width * 0.013 + box.height * 0.017;
+    const amplitude = Math.min(Math.min(radiusX, radiusY) * 0.08, size * (0.12 + amount * 0.08));
+    const rotation = -0.018 - amount * 0.008;
     const cosine = Math.cos(rotation);
     const sine = Math.sin(rotation);
 
     return Array.from({ length: segments + 1 }, (_, index) => {
       const progress = index / segments;
       const angle = startAngle + (endAngle - startAngle) * progress;
-      const wave = Math.sin(angle * (2.3 + amount * 0.34) + seed) * 0.55
-        + Math.sin(angle * (5.1 + pass * 0.7) - seed * 0.63) * 0.27
-        + seededSigned(seed + index * 1.91) * (0.15 + looseness * 0.2);
-      const radialOffset = amplitude * wave + pass * size * 0.22;
+      const wave = Math.sin(angle * 2.4 + seed) * 0.7
+        + Math.sin(angle * 4.7 - seed * 0.63) * 0.3;
+      const radialOffset = amplitude * wave;
       const localX = Math.cos(angle) * (radiusX + radialOffset);
-      const localY = Math.sin(angle) * (radiusY + radialOffset * 0.72);
+      const localY = Math.sin(angle) * (radiusY + radialOffset);
       return {
         x: centerX + localX * cosine - localY * sine,
         y: centerY + localX * sine + localY * cosine,
@@ -3571,14 +3561,7 @@
       return;
     }
 
-    const roughnessAmount = clampNumber(roughness, 1, 5, 3);
-    const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
-    for (let pass = 0; pass < passCount; pass += 1) {
-      targetContext.globalAlpha = pass === 0 ? 1 : pass === 1 ? 0.28 : 0.17;
-      targetContext.lineWidth = pass === 0 ? size : Math.max(1, size * (0.48 - pass * 0.08));
-      if (pass > 0) targetContext.shadowColor = "transparent";
-      strokeSmoothPoints(targetContext, roughEllipsePoints(box, size, roughnessAmount, pass));
-    }
+    strokeSmoothPoints(targetContext, roughEllipsePoints(box, size, roughness));
     targetContext.restore();
   }
 
@@ -3608,17 +3591,13 @@
     return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   }
 
-  function roughCurvePoints(start, control, end, size, roughness, pass = 0) {
+  function roughCurvePoints(start, control, end, size, roughness, phase = 0) {
     const length = Math.hypot(end.x - start.x, end.y - start.y);
     const amount = clampNumber(roughness, 1, 5, 3);
-    const looseness = (amount - 1) / 4;
-    const segments = Math.max(10, Math.min(48, Math.round(length / 22) + amount * 3));
+    const segments = Math.max(12, Math.min(72, Math.round(length / 9)));
     const seed = start.x * 0.019 + start.y * 0.031 + end.x * 0.023 + end.y * 0.017
-      + control.x * 0.013 + control.y * 0.011 + pass * 19.7;
-    const amplitude = Math.min(
-      length * 0.14,
-      size * (0.55 + amount * 0.42) + Math.min(length * 0.003 * amount, size * 2.4),
-    );
+      + control.x * 0.013 + control.y * 0.011 + phase * 1.7;
+    const amplitude = Math.min(length * 0.025, size * (0.14 + amount * 0.11));
 
     return Array.from({ length: segments + 1 }, (_, index) => {
       const progress = index / segments;
@@ -3628,14 +3607,10 @@
       const derivativeLength = Math.hypot(derivativeX, derivativeY) || length || 1;
       const normalX = -derivativeY / derivativeLength;
       const normalY = derivativeX / derivativeLength;
-      const envelope = Math.pow(Math.sin(Math.PI * progress), 0.72);
-      const wave = Math.sin(progress * Math.PI * (2.15 + amount * 0.58) + seed) * 0.56
-        + Math.sin(progress * Math.PI * (6.4 + pass * 0.45) - seed * 0.71) * 0.26
-        + seededSigned(seed + index * 2.17) * (0.13 + looseness * 0.22);
-      const passDrift = pass === 0
-        ? 0
-        : Math.sin(Math.PI * progress) * (pass % 2 === 0 ? -1 : 1) * (0.14 + pass * 0.08);
-      const offset = amplitude * envelope * (wave + passDrift);
+      const envelope = Math.sin(Math.PI * progress);
+      const wave = Math.sin(progress * Math.PI * 2.5 + seed) * 0.72
+        + Math.sin(progress * Math.PI * 5.2 - seed * 0.71) * 0.28;
+      const offset = amplitude * envelope * wave;
       return { x: point.x + normalX * offset, y: point.y + normalY * offset };
     });
   }
@@ -3645,73 +3620,47 @@
     const deltaY = end.y - start.y;
     const length = Math.hypot(deltaX, deltaY);
     if (length < 1) return;
+    const headLength = arrowHead ? Math.min(length * 0.38, Math.max(size * 4.2, 16)) : 0;
+    const headWidth = arrowHead ? Math.min(length * 0.34, Math.max(size * 2.8, 12)) : 0;
+    const headStart = 1 - headLength / length;
+    const base = arrowHead ? quadraticPoint(start, control, end, headStart) : end;
 
     targetContext.save();
     prepareMarkerContext(targetContext, size, color);
-    let renderedPoints = null;
     if (style === "hand") {
-      const roughnessAmount = clampNumber(roughness, 1, 5, 3);
-      const passes = [
-        { alpha: 1, width: 1 },
-        { alpha: 0.29, width: 0.48 },
-        { alpha: 0.17, width: 0.36 },
-      ];
-      const passCount = roughnessAmount >= 5 ? 3 : roughnessAmount >= 3 ? 2 : 1;
-      passes.slice(0, passCount).forEach((pass, index) => {
-        const points = roughCurvePoints(start, control, end, size, roughnessAmount, index);
-        if (index === 0) renderedPoints = points;
-        targetContext.globalAlpha = pass.alpha;
-        targetContext.lineWidth = Math.max(1, size * pass.width);
-        if (index > 0) targetContext.shadowColor = "transparent";
-        strokeSmoothPoints(targetContext, points);
-      });
+      strokeSmoothPoints(targetContext, roughCurvePoints(start, control, end, size, roughness));
     } else {
+      const shaftControl = arrowHead
+        ? { x: start.x + (control.x - start.x) * headStart, y: start.y + (control.y - start.y) * headStart }
+        : control;
       targetContext.beginPath();
       targetContext.moveTo(start.x, start.y);
-      targetContext.quadraticCurveTo(control.x, control.y, end.x, end.y);
+      targetContext.quadraticCurveTo(shaftControl.x, shaftControl.y, base.x, base.y);
       targetContext.stroke();
     }
 
     if (arrowHead) {
-      const directionStart = renderedPoints?.at(-2) || control;
-      const tangentX = end.x - directionStart.x || deltaX;
-      const tangentY = end.y - directionStart.y || deltaY;
+      const tangentX = end.x - base.x || deltaX;
+      const tangentY = end.y - base.y || deltaY;
       const tangentLength = Math.hypot(tangentX, tangentY) || length;
       const directionX = tangentX / tangentLength;
       const directionY = tangentY / tangentLength;
       const normalX = -directionY;
       const normalY = directionX;
-      const headLength = Math.min(length * 0.38, Math.max(size * 4.2, 16));
-      const headWidth = Math.min(length * 0.34, Math.max(size * 2.8, 12));
-      const baseX = end.x - directionX * headLength;
-      const baseY = end.y - directionY * headLength;
       targetContext.shadowColor = "rgba(15, 23, 42, 0.16)";
       targetContext.globalAlpha = 1;
       if (style === "hand") {
-        const roughnessAmount = clampNumber(roughness, 1, 5, 3);
-        const left = { x: baseX + normalX * headWidth / 2, y: baseY + normalY * headWidth / 2 };
-        const right = { x: baseX - normalX * headWidth / 2, y: baseY - normalY * headWidth / 2 };
+        const left = { x: base.x + normalX * headWidth / 2, y: base.y + normalY * headWidth / 2 };
+        const right = { x: base.x - normalX * headWidth / 2, y: base.y - normalY * headWidth / 2 };
         const leftControl = midpoint(left, end);
         const rightControl = midpoint(end, right);
-        leftControl.x += normalX * size * 0.45;
-        leftControl.y += normalY * size * 0.45;
-        rightControl.x -= normalX * size * 0.38;
-        rightControl.y -= normalY * size * 0.38;
-        targetContext.lineWidth = size;
-        strokeSmoothPoints(targetContext, roughCurvePoints(left, leftControl, end, size, roughnessAmount, 7));
-        strokeSmoothPoints(targetContext, roughCurvePoints(end, rightControl, right, size, roughnessAmount, 11));
-        if (roughnessAmount >= 4) {
-          targetContext.globalAlpha = 0.3;
-          targetContext.lineWidth = Math.max(1, size * 0.48);
-          targetContext.shadowColor = "transparent";
-          strokeSmoothPoints(targetContext, roughCurvePoints(left, leftControl, end, size, roughnessAmount, 13));
-          strokeSmoothPoints(targetContext, roughCurvePoints(end, rightControl, right, size, roughnessAmount, 17));
-        }
+        strokeSmoothPoints(targetContext, roughCurvePoints(left, leftControl, end, size, roughness, 7));
+        strokeSmoothPoints(targetContext, roughCurvePoints(end, rightControl, right, size, roughness, 11));
       } else {
         targetContext.beginPath();
         targetContext.moveTo(end.x, end.y);
-        targetContext.lineTo(baseX + normalX * headWidth / 2, baseY + normalY * headWidth / 2);
-        targetContext.lineTo(baseX - normalX * headWidth / 2, baseY - normalY * headWidth / 2);
+        targetContext.lineTo(base.x + normalX * headWidth / 2, base.y + normalY * headWidth / 2);
+        targetContext.lineTo(base.x - normalX * headWidth / 2, base.y - normalY * headWidth / 2);
         targetContext.closePath();
         targetContext.fill();
       }
