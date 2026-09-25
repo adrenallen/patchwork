@@ -25,7 +25,7 @@ Patchwork is a fast, local image redaction and screenshot-markup tool. Paste, dr
 - Smart Text replacement typography detection with auto-expanding text boxes, near-zero sizing, global defaults, and per-match weight, size, and rotation overrides
 - Every Smart Text replacement remains an editable text layer with direct move, resize, and rotation handles plus Shift-click multi-selection for shared styling
 - Tools apply as soon as you release the pointer
-- Clean or genuinely irregular hand-drawn marker circles, arrows, and lines with remembered color, stroke size, adjustable roughness, and open-ended rough circles
+- Clean or quick, swooping marker circles, arrows, and lines with remembered color, stroke size, and adjustable gesture strength
 - Bendable arrows and lines with a simple middle curve handle
 - Dedicated drag-to-crop mode with dimension-safe undo and redo
 - Non-destructive workspace zoom, Fit, and drag-to-pan controls

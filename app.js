@@ -254,7 +254,7 @@
   };
 
   const TOOL_DETAILS = {
-    arrange: ["Arrange", "Move, resize, or reorder image layers."],
+    arrange: ["Arrange", "Move or resize edits and image layers."],
     crop: ["Crop", "Drag over the part of the image you want to keep."],
     mask: ["Mask", "Cover an area with a color or pattern."],
     blur: ["Blur", "Obscure an area with Gaussian or pixel blur."],
@@ -273,7 +273,7 @@
   const MAX_RECENT_PATCHES = 10;
   const MIN_VIEW_ZOOM = 0.5;
   const MAX_VIEW_ZOOM = 4;
-  const ROUGHNESS_LABELS = ["", "Subtle", "Natural", "Loose", "Expressive", "Very loose"];
+  const SWOOP_LABELS = ["", "Light", "Easy", "Natural", "Bold", "Extra bold"];
   const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
 
   let imageLoaded = false;
@@ -863,7 +863,7 @@
       annotationStyle = ["clean", "hand"].includes(settings.annotationStyle) ? settings.annotationStyle : "clean";
       annotationRoughness = clampNumber(settings.annotationRoughness, 1, 5, 3);
       elements.annotationRoughness.value = String(annotationRoughness);
-      elements.annotationRoughnessValue.value = roughnessLabel();
+      elements.annotationRoughnessValue.value = swoopLabel();
       elements.annotationRoughnessField.hidden = annotationStyle !== "hand";
       elements.annotationStyleButtons.forEach((button) => {
         const active = button.dataset.annotationStyle === annotationStyle;
@@ -2026,14 +2026,14 @@
     render();
   }
 
-  function roughnessLabel(value = annotationRoughness) {
-    return ROUGHNESS_LABELS[clampNumber(value, 1, 5, 3)];
+  function swoopLabel(value = annotationRoughness) {
+    return SWOOP_LABELS[clampNumber(value, 1, 5, 3)];
   }
 
   function setAnnotationRoughness(nextRoughness, remember = true) {
     annotationRoughness = clampNumber(nextRoughness, 1, 5, 3);
     elements.annotationRoughness.value = String(annotationRoughness);
-    elements.annotationRoughnessValue.value = roughnessLabel();
+    elements.annotationRoughnessValue.value = swoopLabel();
     if (remember) savePreference(STORAGE_KEYS.annotationRoughness, String(annotationRoughness));
     if (remember) captureToolSettings(mode);
     syncActiveObjectFromControls();
@@ -2247,7 +2247,7 @@
       title.textContent = presetName;
       const detail = document.createElement("small");
       detail.textContent = isAnnotation
-        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? `Hand drawn · ${roughnessLabel(preset.annotationRoughness)}` : "Clean"}`
+        ? `${(preset.annotationColor || "#ef4444").toUpperCase()} · ${preset.annotationSize || 6} px · ${preset.annotationStyle === "hand" ? `Hand drawn · ${swoopLabel(preset.annotationRoughness)}` : "Clean"}`
         : preset.mode === "text"
           ? `${(TEXT_FONTS[preset.textFont] || TEXT_FONTS.sans).label} · ${preset.autoTextSize ? "Auto" : `${preset.fontSize || 28} px`} · ${capitalize(preset.textStyle || "bold")}`
           : preset.mode === "blur"
@@ -2985,12 +2985,12 @@
     const start = { x: object.startX, y: object.startY };
     const control = { x: object.controlX, y: object.controlY };
     const end = { x: object.endX, y: object.endY };
+    const points = object.annotationStyle === "hand"
+      ? gestureCurvePoints(start, control, end, object.annotationSize, object.annotationRoughness || 3)
+      : Array.from({ length: 29 }, (_, step) => quadraticPoint(start, control, end, step / 28));
     let nearest = Number.POSITIVE_INFINITY;
-    let previous = start;
-    for (let step = 1; step <= 28; step += 1) {
-      const current = quadraticPoint(start, control, end, step / 28);
-      nearest = Math.min(nearest, distanceToSegment(point, previous, current));
-      previous = current;
+    for (let index = 1; index < points.length; index += 1) {
+      nearest = Math.min(nearest, distanceToSegment(point, points[index - 1], points[index]));
     }
     return nearest;
   }
@@ -3049,16 +3049,6 @@
       ["sw", { x: selection.x, y: selection.y + selection.height }],
     ];
     return handles.find(([, handlePoint]) => distanceBetween(point, handlePoint) <= tolerance)?.[0] || null;
-  }
-
-  function selectionContainsPoint(point) {
-    if (!selection || activeObject()) return false;
-    if (["arrow", "line"].includes(mode)) {
-      const { start, end } = resolvedArrowPoints();
-      return distanceToSegment(point, start, end) <= viewHitTolerance() + markerSize() / 2;
-    }
-    return point.x >= selection.x && point.x <= selection.x + selection.width
-      && point.y >= selection.y && point.y <= selection.y + selection.height;
   }
 
   function imageLayerContainsPoint(layer, point) {
@@ -3513,31 +3503,26 @@
     targetContext.stroke();
   }
 
-  function roughEllipsePoints(box, size, roughness) {
+  function gestureEllipsePoints(box, size, swoop) {
     const centerX = box.x + box.width / 2;
     const centerY = box.y + box.height / 2;
     const radiusX = Math.max(0.5, box.width / 2 - size / 2);
     const radiusY = Math.max(0.5, box.height / 2 - size / 2);
-    const amount = clampNumber(roughness, 1, 5, 3);
-    const gap = 0.07 + amount * 0.025;
-    const gapCenter = -0.48;
-    const startAngle = gapCenter + gap / 2;
-    const endAngle = gapCenter + Math.PI * 2 - gap / 2;
-    const segments = Math.max(36, Math.min(96, Math.round((radiusX + radiusY) / 5)));
-    const seed = centerX * 0.021 + centerY * 0.037 + box.width * 0.013 + box.height * 0.017;
-    const amplitude = Math.min(Math.min(radiusX, radiusY) * 0.08, size * (0.12 + amount * 0.08));
-    const rotation = -0.018 - amount * 0.008;
+    const amount = clampNumber(swoop, 1, 5, 3);
+    const startAngle = -0.58;
+    const endAngle = startAngle + Math.PI * 2 + 0.08 + amount * 0.018;
+    const segments = Math.max(48, Math.min(100, Math.round((radiusX + radiusY) / 4)));
+    const amplitude = Math.min(Math.min(radiusX, radiusY) * 0.065, size * (0.22 + amount * 0.14));
+    const rotation = -0.025 - amount * 0.012;
     const cosine = Math.cos(rotation);
     const sine = Math.sin(rotation);
 
     return Array.from({ length: segments + 1 }, (_, index) => {
       const progress = index / segments;
       const angle = startAngle + (endAngle - startAngle) * progress;
-      const wave = Math.sin(angle * 2.4 + seed) * 0.7
-        + Math.sin(angle * 4.7 - seed * 0.63) * 0.3;
-      const radialOffset = amplitude * wave;
+      const radialOffset = amplitude * Math.sin(angle * 1.3 + 0.7);
       const localX = Math.cos(angle) * (radiusX + radialOffset);
-      const localY = Math.sin(angle) * (radiusY + radialOffset);
+      const localY = Math.sin(angle) * (radiusY + radialOffset * 0.65);
       return {
         x: centerX + localX * cosine - localY * sine,
         y: centerY + localX * sine + localY * cosine,
@@ -3561,7 +3546,7 @@
       return;
     }
 
-    strokeSmoothPoints(targetContext, roughEllipsePoints(box, size, roughness));
+    strokeSmoothPoints(targetContext, gestureEllipsePoints(box, size, roughness));
     targetContext.restore();
   }
 
@@ -3591,27 +3576,19 @@
     return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   }
 
-  function roughCurvePoints(start, control, end, size, roughness, phase = 0) {
+  function gestureCurvePoints(start, control, end, size, swoop) {
     const length = Math.hypot(end.x - start.x, end.y - start.y);
-    const amount = clampNumber(roughness, 1, 5, 3);
-    const segments = Math.max(12, Math.min(72, Math.round(length / 9)));
-    const seed = start.x * 0.019 + start.y * 0.031 + end.x * 0.023 + end.y * 0.017
-      + control.x * 0.013 + control.y * 0.011 + phase * 1.7;
-    const amplitude = Math.min(length * 0.025, size * (0.14 + amount * 0.11));
+    if (length < 1) return [start, end];
+    const amount = clampNumber(swoop, 1, 5, 3);
+    const normalX = -(end.y - start.y) / length;
+    const normalY = (end.x - start.x) / length;
+    const lift = Math.min(length * 0.15, Math.max(size * 1.5, length * 0.09) * (0.35 + amount * 0.22));
+    const gestureControl = { x: control.x - normalX * lift, y: control.y - normalY * lift };
+    const segments = Math.max(16, Math.min(72, Math.round(length / 9)));
 
     return Array.from({ length: segments + 1 }, (_, index) => {
       const progress = index / segments;
-      const point = quadraticPoint(start, control, end, progress);
-      const derivativeX = 2 * (1 - progress) * (control.x - start.x) + 2 * progress * (end.x - control.x);
-      const derivativeY = 2 * (1 - progress) * (control.y - start.y) + 2 * progress * (end.y - control.y);
-      const derivativeLength = Math.hypot(derivativeX, derivativeY) || length || 1;
-      const normalX = -derivativeY / derivativeLength;
-      const normalY = derivativeX / derivativeLength;
-      const envelope = Math.sin(Math.PI * progress);
-      const wave = Math.sin(progress * Math.PI * 2.5 + seed) * 0.72
-        + Math.sin(progress * Math.PI * 5.2 - seed * 0.71) * 0.28;
-      const offset = amplitude * envelope * wave;
-      return { x: point.x + normalX * offset, y: point.y + normalY * offset };
+      return quadraticPoint(start, gestureControl, end, progress);
     });
   }
 
@@ -3627,8 +3604,10 @@
 
     targetContext.save();
     prepareMarkerContext(targetContext, size, color);
+    let gesturePoints = null;
     if (style === "hand") {
-      strokeSmoothPoints(targetContext, roughCurvePoints(start, control, end, size, roughness));
+      gesturePoints = gestureCurvePoints(start, control, end, size, roughness);
+      strokeSmoothPoints(targetContext, gesturePoints);
     } else {
       const shaftControl = arrowHead
         ? { x: start.x + (control.x - start.x) * headStart, y: start.y + (control.y - start.y) * headStart }
@@ -3640,8 +3619,9 @@
     }
 
     if (arrowHead) {
-      const tangentX = end.x - base.x || deltaX;
-      const tangentY = end.y - base.y || deltaY;
+      const tangentStart = gesturePoints?.at(-3) || base;
+      const tangentX = end.x - tangentStart.x || deltaX;
+      const tangentY = end.y - tangentStart.y || deltaY;
       const tangentLength = Math.hypot(tangentX, tangentY) || length;
       const directionX = tangentX / tangentLength;
       const directionY = tangentY / tangentLength;
@@ -3650,12 +3630,17 @@
       targetContext.shadowColor = "rgba(15, 23, 42, 0.16)";
       targetContext.globalAlpha = 1;
       if (style === "hand") {
-        const left = { x: base.x + normalX * headWidth / 2, y: base.y + normalY * headWidth / 2 };
-        const right = { x: base.x - normalX * headWidth / 2, y: base.y - normalY * headWidth / 2 };
-        const leftControl = midpoint(left, end);
-        const rightControl = midpoint(end, right);
-        strokeSmoothPoints(targetContext, roughCurvePoints(left, leftControl, end, size, roughness, 7));
-        strokeSmoothPoints(targetContext, roughCurvePoints(end, rightControl, right, size, roughness, 11));
+        const left = { x: end.x - directionX * headLength + normalX * headWidth * 0.55,
+          y: end.y - directionY * headLength + normalY * headWidth * 0.55 };
+        const right = { x: end.x - directionX * headLength * 0.82 - normalX * headWidth * 0.42,
+          y: end.y - directionY * headLength * 0.82 - normalY * headWidth * 0.42 };
+        targetContext.beginPath();
+        targetContext.moveTo(left.x, left.y);
+        targetContext.quadraticCurveTo(end.x - directionX * headLength * 0.42 + normalX * size * 0.3,
+          end.y - directionY * headLength * 0.42 + normalY * size * 0.3, end.x, end.y);
+        targetContext.quadraticCurveTo(end.x - directionX * headLength * 0.38 - normalX * size * 0.2,
+          end.y - directionY * headLength * 0.38 - normalY * size * 0.2, right.x, right.y);
+        targetContext.stroke();
       } else {
         targetContext.beginPath();
         targetContext.moveTo(end.x, end.y);
@@ -3821,10 +3806,21 @@
     if (!["arrow", "line"].includes(object.mode)) {
       return { x: object.x, y: object.y, width: object.width, height: object.height };
     }
-    const minimumX = Math.min(object.startX, object.endX, object.controlX);
-    const minimumY = Math.min(object.startY, object.endY, object.controlY);
-    const maximumX = Math.max(object.startX, object.endX, object.controlX);
-    const maximumY = Math.max(object.startY, object.endY, object.controlY);
+    const points = object.annotationStyle === "hand"
+      ? gestureCurvePoints(
+        { x: object.startX, y: object.startY },
+        { x: object.controlX, y: object.controlY },
+        { x: object.endX, y: object.endY },
+        object.annotationSize,
+        object.annotationRoughness || 3,
+      )
+      : [];
+    const xs = [object.startX, object.endX, object.controlX, ...points.map((point) => point.x)];
+    const ys = [object.startY, object.endY, object.controlY, ...points.map((point) => point.y)];
+    const minimumX = Math.min(...xs);
+    const minimumY = Math.min(...ys);
+    const maximumX = Math.max(...xs);
+    const maximumY = Math.max(...ys);
     return { x: minimumX, y: minimumY, width: maximumX - minimumX, height: maximumY - minimumY };
   }
 
@@ -4427,7 +4423,7 @@
     if (isSmartText) ensureSmartTextAnalysisIsFresh();
     if (imageLoaded) {
       elements.workspaceTip.textContent = mode === "arrange"
-        ? "Click an image · drag to move · corners resize"
+        ? "Drag an edit or image · handles resize"
         : mode === "crop"
           ? cropScope === "layer"
             ? "Choose a layer below · drag over the part to keep"
@@ -4438,7 +4434,7 @@
               : "Type a headline · drag a box anywhere to place"
           : mode === "smart"
             ? "Analyze text · search phrases · preview every match"
-          : "Drag to place · click an item to edit";
+          : "Drag to place · use Arrange to edit";
     }
     updateControls();
     if (isCanvasText) updateCanvasTextControls();
@@ -4517,7 +4513,7 @@
     annotationStyle = ["clean", "hand"].includes(object.annotationStyle) ? object.annotationStyle : "clean";
     annotationRoughness = clampNumber(object.annotationRoughness, 1, 5, 3);
     elements.annotationRoughness.value = String(annotationRoughness);
-    elements.annotationRoughnessValue.value = roughnessLabel();
+    elements.annotationRoughnessValue.value = swoopLabel();
     elements.annotationRoughnessField.hidden = annotationStyle !== "hand";
     elements.annotationStyleButtons.forEach((button) => {
       const isActive = button.dataset.annotationStyle === annotationStyle;
@@ -5164,12 +5160,9 @@
     const outputPoint = canvasOutputPoint(event);
     const selectedCanvasText = activeObject()?.mode === "canvas-text" ? activeObject() : null;
     const canvasTextHandle = selectedCanvasText ? activeHandleAtPoint(outputPoint) : null;
-    const canvasTextHit = frameEnabled ? findObjectAtPoint(outputPoint, "share") : null;
-    if (canvasTextHandle || canvasTextHit) {
-      const object = canvasTextHit || selectedCanvasText;
-      if (object.id !== activeObjectId) selectPlacedObject(object);
+    if (canvasTextHandle) {
       canvas.setPointerCapture(event.pointerId);
-      beginObjectInteraction(object, outputPoint, canvasTextHandle);
+      beginObjectInteraction(selectedCanvasText, outputPoint, canvasTextHandle);
       canvas.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
       return;
@@ -5178,6 +5171,23 @@
     canvas.setPointerCapture(event.pointerId);
     const point = canvasPoint(event);
     if (mode === "arrange") {
+      const canvasTextHit = frameEnabled ? findObjectAtPoint(outputPoint, "share") : null;
+      const selectedHandle = activeObject()?.mode !== "canvas-text" ? activeHandleAtPoint(point) : null;
+      const hitObject = canvasTextHit || findObjectAtPoint(point, "document");
+      if (selectedHandle || hitObject) {
+        const object = selectedHandle ? activeObject() : hitObject;
+        if (event.shiftKey && object.mode === "text") {
+          selectPlacedObject(object, { additive: true });
+          canvas.releasePointerCapture(event.pointerId);
+          canvas.style.cursor = "default";
+          return;
+        }
+        if (object.id !== activeObjectId) selectPlacedObject(object);
+        beginObjectInteraction(object, object.mode === "canvas-text" ? outputPoint : point, selectedHandle);
+        canvas.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+        return;
+      }
       const layerHandle = imageLayerHandleAtPoint(point);
       const layer = layerHandle ? activeImageLayer() : findImageLayerAtPoint(point);
       if (layer) {
@@ -5187,6 +5197,7 @@
         document.body.style.userSelect = "none";
       } else {
         activeImageLayerId = null;
+        clearSelectedObjects();
         selection = null;
         renderLayers();
         updateControls();
@@ -5240,27 +5251,6 @@
       return;
     }
 
-    const hitObject = mode === "crop" ? null : findObjectAtPoint(point);
-    if (hitObject) {
-      if (event.shiftKey && hitObject.mode === "text") {
-        selectPlacedObject(hitObject, { additive: true });
-        canvas.style.cursor = "default";
-        return;
-      }
-      if (hitObject.id !== activeObjectId) selectPlacedObject(hitObject);
-      beginObjectInteraction(hitObject, point, activeHandleAtPoint(point));
-      canvas.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-      return;
-    }
-
-    if (mode !== "crop" && selectionContainsPoint(point)) {
-      beginSelectionInteraction(point);
-      canvas.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-      return;
-    }
-
     commitPendingSettingsHistory();
     clearSelectedObjects();
     dragStart = point;
@@ -5295,15 +5285,17 @@
     }
 
     if (!isSelecting) {
-      const handle = mode === "arrange"
-        ? imageLayerHandleAtPoint(currentPoint)
-        : activeHandleAtPoint(currentPoint) || selectionHandleAtPoint(currentPoint);
+      const outputPoint = canvasOutputPoint(event);
+      const handle = activeObject()?.mode === "canvas-text"
+        ? activeHandleAtPoint(outputPoint)
+        : activeHandleAtPoint(currentPoint) || selectionHandleAtPoint(currentPoint)
+          || (mode === "arrange" ? imageLayerHandleAtPoint(currentPoint) : null);
       if (["nw", "se"].includes(handle)) canvas.style.cursor = "nwse-resize";
       else if (["ne", "sw"].includes(handle)) canvas.style.cursor = "nesw-resize";
       else if (["start", "end", "control", "rotate"].includes(handle)) canvas.style.cursor = "grab";
       else if (mode === "arrange" && findImageLayerAtPoint(currentPoint)) canvas.style.cursor = "move";
-      else if (selectionContainsPoint(currentPoint)) canvas.style.cursor = "move";
-      else if (findObjectAtPoint(currentPoint)) canvas.style.cursor = "move";
+      else if (mode === "arrange" && (findObjectAtPoint(currentPoint, "document")
+        || (frameEnabled && findObjectAtPoint(outputPoint, "share")))) canvas.style.cursor = "move";
       else canvas.style.cursor = "crosshair";
       return;
     }
