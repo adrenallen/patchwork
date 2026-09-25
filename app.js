@@ -329,6 +329,7 @@
   let arrowStart = null;
   let arrowEnd = null;
   let isSelecting = false;
+  let selectionBeforePointerDraw = null;
   let viewZoom = 1;
   let viewPanX = 0;
   let viewPanY = 0;
@@ -1297,12 +1298,19 @@
     };
   }
 
-  function finishCanvasTextPlacement(object, message) {
+  function finishCanvasTextPlacement(object, message, selectAfterPlacement = true) {
     placedObjects.push(object);
-    selectOnlyObject(object);
     activeImageLayerId = null;
-    syncSelectionFromActiveObject();
-    setMode("canvas-text", { preserveActive: true, loadSettings: false });
+    if (selectAfterPlacement) {
+      selectOnlyObject(object);
+      syncSelectionFromActiveObject();
+      setMode("canvas-text", { preserveActive: true, loadSettings: false });
+    } else {
+      clearSelectedObjects();
+      selection = null;
+      arrowStart = null;
+      arrowEnd = null;
+    }
     renderLayers();
     updateControls();
     render();
@@ -4407,8 +4415,8 @@
     elements.activeToolDescription.textContent = toolDescription;
     elements.activeToolPanel.classList.toggle("has-settings", mode !== "arrange");
     elements.annotationNote.textContent = ["arrow", "line"].includes(mode)
-      ? `Drag the ${mode}, then move the diamond handle to bend it.`
-      : "Drag a box around the area to circle.";
+      ? `Drag the ${mode}. Click it to select, then drag the diamond handle to bend it.`
+      : "Drag a box to circle. Click an existing circle to edit it.";
     if (["arrow", "line"].includes(mode) && selection && (!arrowStart || !arrowEnd)) {
       arrowStart = { x: selection.x, y: selection.y };
       arrowEnd = { x: selection.x + selection.width, y: selection.y + selection.height };
@@ -4434,7 +4442,9 @@
               : "Type a headline · drag a box anywhere to place"
           : mode === "smart"
             ? "Analyze text · search phrases · preview every match"
-          : "Drag to place · use Arrange to edit";
+          : activeObject()
+            ? "Drag selected edit to move · handles resize"
+            : "Drag to place · click an edit to select";
     }
     updateControls();
     if (isCanvasText) updateCanvasTextControls();
@@ -4689,14 +4699,16 @@
     if (mode === "canvas-text") {
       const object = canvasTextObjectForBounds({ ...selection });
       selectionInteraction = null;
-      finishCanvasTextPlacement(object, "Headline placed. Drag it or use Offset to fine-tune.");
+      finishCanvasTextPlacement(object, "Headline placed. Click it to edit.", false);
       return;
     }
     const object = createPlacedObject();
     placedObjects.push(object);
-    selectOnlyObject(object);
+    clearSelectedObjects();
     selectionInteraction = null;
-    syncSelectionFromActiveObject();
+    selection = null;
+    arrowStart = null;
+    arrowEnd = null;
     rebuildBaseCanvas();
     rememberCurrentPreset();
     updateControls();
@@ -5157,10 +5169,11 @@
     if (!imageLoaded || panModeEnabled || event.button !== 0) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
+    selectionBeforePointerDraw = null;
     const outputPoint = canvasOutputPoint(event);
     const selectedCanvasText = activeObject()?.mode === "canvas-text" ? activeObject() : null;
     const canvasTextHandle = selectedCanvasText ? activeHandleAtPoint(outputPoint) : null;
-    if (canvasTextHandle) {
+    if (canvasTextHandle || (selectedCanvasText && objectContainsPoint(selectedCanvasText, outputPoint))) {
       canvas.setPointerCapture(event.pointerId);
       beginObjectInteraction(selectedCanvasText, outputPoint, canvasTextHandle);
       canvas.style.cursor = "grabbing";
@@ -5235,7 +5248,8 @@
       return;
     }
     const selectedHandle = activeHandleAtPoint(point);
-    if (mode !== "crop" && activeObject() && selectedHandle) {
+    if (mode !== "crop" && !(event.shiftKey && mode === "text") && activeObject()
+      && (selectedHandle || objectContainsPoint(activeObject(), point))) {
       beginObjectInteraction(activeObject(), point, selectedHandle);
       canvas.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
@@ -5252,6 +5266,9 @@
     }
 
     commitPendingSettingsHistory();
+    if (event.shiftKey && mode === "text" && activeObject()) {
+      selectionBeforePointerDraw = { activeId: activeObjectId, ids: [...selectedObjectIds] };
+    }
     clearSelectedObjects();
     dragStart = point;
     arrowStart = { ...dragStart };
@@ -5293,6 +5310,8 @@
       if (["nw", "se"].includes(handle)) canvas.style.cursor = "nwse-resize";
       else if (["ne", "sw"].includes(handle)) canvas.style.cursor = "nesw-resize";
       else if (["start", "end", "control", "rotate"].includes(handle)) canvas.style.cursor = "grab";
+      else if (activeObject() && objectContainsPoint(activeObject(),
+        activeObject().mode === "canvas-text" ? outputPoint : currentPoint)) canvas.style.cursor = "move";
       else if (mode === "arrange" && findImageLayerAtPoint(currentPoint)) canvas.style.cursor = "move";
       else if (mode === "arrange" && (findObjectAtPoint(currentPoint, "document")
         || (frameEnabled && findObjectAtPoint(outputPoint, "share")))) canvas.style.cursor = "move";
@@ -5344,7 +5363,24 @@
       selection = null;
       arrowStart = null;
       arrowEnd = null;
+      if (event.type === "pointerup" && mode !== "crop") {
+        const outputPoint = canvasOutputPoint(event);
+        const point = canvasPoint(event);
+        const hitObject = (frameEnabled && findObjectAtPoint(outputPoint, "share"))
+          || findObjectAtPoint(point, "document");
+        if (hitObject) {
+          if (selectionBeforePointerDraw && hitObject.mode === "text") {
+            activeObjectId = selectionBeforePointerDraw.activeId;
+            selectedObjectIds = new Set(selectionBeforePointerDraw.ids);
+          }
+          selectionBeforePointerDraw = null;
+          selectPlacedObject(hitObject, { additive: event.shiftKey });
+          canvas.style.cursor = "grab";
+          return;
+        }
+      }
     }
+    selectionBeforePointerDraw = null;
     updateControls();
     render();
     if (selection && event.type === "pointerup") {
